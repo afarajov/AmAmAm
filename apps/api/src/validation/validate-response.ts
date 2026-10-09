@@ -1,6 +1,7 @@
 import type { AgentRequest, AgentResponse } from "@contextlayer/shared";
 import { HttpError } from "../errors/api-error.js";
 import { agentResponseSchema } from "./schemas.js";
+import { excerptIsGrounded } from "./grounding.js";
 
 const invalidModelResponse = () =>
   new HttpError(502, "MODEL_ERROR", "The AI pipeline returned an invalid response.");
@@ -18,13 +19,16 @@ export function validateAgentResponse(input: unknown, request: AgentRequest): Ag
     throw invalidModelResponse();
   }
 
-  const knownIds = new Set(request.page.elements.map((element) => element.id));
-  if (response.references?.some((reference) => !knownIds.has(reference.elementId))) {
-    throw invalidModelResponse();
+  const knownElements = new Map(request.page.elements.map((element) => [element.id, element]));
+  for (const reference of response.references ?? []) {
+    const element = knownElements.get(reference.elementId);
+    if (!element || reference.excerpt === undefined || !excerptIsGrounded(reference.excerpt, element.text)) {
+      throw invalidModelResponse();
+    }
   }
   for (const action of response.actions) {
     if (action.type === "RESTORE_ALL") continue;
-    if (action.targetElementIds.some((elementId) => !knownIds.has(elementId))) {
+    if (action.targetElementIds.some((elementId) => !knownElements.has(elementId))) {
       throw invalidModelResponse();
     }
   }

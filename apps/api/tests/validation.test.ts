@@ -67,6 +67,16 @@ describe("runtime contracts", () => {
     }, request)).toThrow(HttpError);
   });
 
+  it("rejects a reference whose excerpt is not present in the element text", () => {
+    expect(() => validateAgentResponse({
+      ...response,
+      references: [{ elementId: "node-00001", excerpt: "A fabricated supporting quote" }]
+    }, request)).toThrowError(expect.objectContaining({
+      status: 502,
+      code: "MODEL_ERROR"
+    }));
+  });
+
   it("enforces the discriminated action contract", () => {
     expect(agentActionSchema.safeParse({ type: "RESTORE_ALL" }).success).toBe(true);
     expect(agentActionSchema.safeParse({ type: "RESTORE_ALL", targetElementIds: ["node-00001"] }).success).toBe(false);

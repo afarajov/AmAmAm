@@ -7,6 +7,7 @@ export interface AgentPlanAction {
 }
 
 export interface AgentPlan {
+  grounding: "SUPPORTED" | "NOT_FOUND" | "NOT_APPLICABLE";
   message: string;
   references: { elementId: string; excerpt: string }[];
   actions: AgentPlanAction[];
