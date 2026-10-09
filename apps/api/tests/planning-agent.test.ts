@@ -81,6 +81,39 @@ describe("PlanningAgentService", () => {
     expect(response.references?.[0]?.elementId).toBe("node-00003");
   });
 
+  it("keeps long grounded excerpts within the public response contract", async () => {
+    const longEvidence = "Career evidence ".repeat(40);
+    const longEvidenceRequest: AgentRequest = {
+      ...request,
+      page: {
+        ...request.page,
+        elements: [{
+          id: "node-00003",
+          kind: "paragraph",
+          text: longEvidence,
+          tagName: "P",
+          visible: true
+        }]
+      }
+    };
+    const planner: AgentPlanner = { plan: async () => ({
+      grounding: "SUPPORTED",
+      message: "Found career evidence.",
+      references: [{ elementId: "node-00003", excerpt: longEvidence }],
+      actions: [{
+        type: "HIGHLIGHT",
+        targetElementIds: ["node-00003"],
+        explanation: "Requested"
+      }],
+      limitations: []
+    }) };
+
+    const response = await new PlanningAgentService(planner).query(longEvidenceRequest);
+
+    expect(response.references?.[0]?.excerpt).toHaveLength(500);
+    expect(longEvidence).toContain(response.references?.[0]?.excerpt);
+  });
+
   it("returns a deterministic honest answer when evidence is absent", async () => {
     const planner: AgentPlanner = { plan: async () => ({
       grounding: "NOT_FOUND",

@@ -14,6 +14,19 @@ export function excerptIsGrounded(excerpt: string, elementText: string): boolean
   return normalizedExcerpt.length > 0 && normalizeEvidence(elementText).includes(normalizedExcerpt);
 }
 
+function exactExcerpt(excerpt: string, elementText: string): string | undefined {
+  if (excerptIsGrounded(excerpt, elementText)) return excerpt;
+
+  // Models sometimes append an ellipsis while honoring a maximum length.
+  // Removing only a terminal ellipsis is safe when the remaining quote is
+  // still a literal substring; all other altered evidence remains invalid.
+  const withoutEllipsis = excerpt.replace(/(?:\.{3}|…)[\s]*$/u, "").trimEnd();
+  if (withoutEllipsis !== excerpt && excerptIsGrounded(withoutEllipsis, elementText)) {
+    return withoutEllipsis;
+  }
+  return undefined;
+}
+
 export function validateGroundedPlan(plan: AgentPlan, candidates: readonly SemanticElement[]): AgentPlan {
   const elements = new Map(candidates.map((element) => [element.id, element]));
 
@@ -36,11 +49,14 @@ export function validateGroundedPlan(plan: AgentPlan, candidates: readonly Seman
   if (plan.references.length === 0) throw invalidGrounding();
 
   const referencedIds = new Set<string>();
-  for (const reference of plan.references) {
+  const references = plan.references.map((reference) => {
     const element = elements.get(reference.elementId);
-    if (!element || !excerptIsGrounded(reference.excerpt, element.text)) throw invalidGrounding();
+    if (!element) throw invalidGrounding();
+    const excerpt = exactExcerpt(reference.excerpt, element.text);
+    if (excerpt === undefined) throw invalidGrounding();
     referencedIds.add(reference.elementId);
-  }
+    return { ...reference, excerpt };
+  });
 
   for (const action of plan.actions) {
     if (action.type === "RESTORE_ALL") throw invalidGrounding();
@@ -48,5 +64,5 @@ export function validateGroundedPlan(plan: AgentPlan, candidates: readonly Seman
     if (action.targetElementIds.some((id) => !referencedIds.has(id))) throw invalidGrounding();
   }
 
-  return plan;
+  return { ...plan, references };
 }

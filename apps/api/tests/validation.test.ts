@@ -4,6 +4,7 @@ import { HttpError } from "../src/errors/api-error.js";
 import { agentActionSchema, actionExecutionResultSchema, apiErrorSchema } from "../src/validation/schemas.js";
 import { validateAgentRequest } from "../src/validation/validate-request.js";
 import { validateAgentResponse } from "../src/validation/validate-response.js";
+import { validateGroundedPlan } from "../src/validation/grounding.js";
 
 const request: AgentRequest = {
   requestId: "4ccf107d-a4c4-4da6-9d91-505a16c1ae71",
@@ -75,6 +76,21 @@ describe("runtime contracts", () => {
       status: 502,
       code: "MODEL_ERROR"
     }));
+  });
+
+  it("repairs only a terminal ellipsis on an otherwise exact quote", () => {
+    const plan = validateGroundedPlan({
+      grounding: "SUPPORTED",
+      message: "Found it.",
+      references: [{
+        elementId: "node-00001",
+        excerpt: "Privacy is an important limitation..."
+      }],
+      actions: [],
+      limitations: []
+    }, request.page.elements);
+
+    expect(plan.references[0]?.excerpt).toBe("Privacy is an important limitation");
   });
 
   it("enforces the discriminated action contract", () => {

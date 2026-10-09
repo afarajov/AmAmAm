@@ -34,7 +34,12 @@ export class PlanningAgentService implements AgentService {
       pageId: request.page.pageId,
       snapshotVersion: request.page.snapshotVersion,
       message: responseMessage(request.query, plan),
-      references: plan.references.map(({ elementId, excerpt }) => ({ elementId, excerpt })),
+      references: plan.references.map(({ elementId, excerpt }) => ({
+        elementId,
+        // Grounding is already verified, so a prefix remains an exact quote
+        // while keeping the public response inside its contract limit.
+        excerpt: excerpt.slice(0, 500)
+      })),
       actions: plan.actions.map((action) => action.type === "RESTORE_ALL"
         ? { type: "RESTORE_ALL", explanation: action.explanation }
         : {
