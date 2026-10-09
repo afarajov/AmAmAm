@@ -3,8 +3,7 @@ import {
   MessageCircle,
   RotateCcw,
   Send,
-  Sparkles,
-  X
+  Sparkles
 } from "lucide-react";
 import { FormEvent, KeyboardEvent, useEffect, useId, useRef, useState } from "react";
 
@@ -42,9 +41,9 @@ export function AssistantWidget({
   const messagesRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const openPanel = () => setIsOpen(true);
-    activationTarget.addEventListener(activationEvent, openPanel);
-    return () => activationTarget.removeEventListener(activationEvent, openPanel);
+    const togglePanel = () => setIsOpen((current) => !current);
+    activationTarget.addEventListener(activationEvent, togglePanel);
+    return () => activationTarget.removeEventListener(activationEvent, togglePanel);
   }, [activationEvent, activationTarget]);
 
   useEffect(() => {
@@ -115,33 +114,27 @@ export function AssistantWidget({
                 <p><span aria-hidden="true" />{modeLabel}</p>
               </div>
             </div>
-            <div className="contextlayer-header-actions">
-              <button
-                className="contextlayer-icon-button"
-                type="button"
-                aria-label="Reset page changes"
-                title="No page changes to reset"
-                disabled
-              >
-                <RotateCcw aria-hidden="true" size={18} />
-              </button>
-              <button
-                className="contextlayer-icon-button"
-                type="button"
-                aria-label="Close assistant"
-                title="Close"
-                onClick={() => setIsOpen(false)}
-              >
-                <X aria-hidden="true" size={19} />
-              </button>
-            </div>
+            <button
+              className="contextlayer-icon-button"
+              type="button"
+              aria-label="Reset page changes"
+              title="No page changes to reset"
+              disabled
+            >
+              <RotateCcw aria-hidden="true" size={18} />
+            </button>
           </header>
 
           <div ref={messagesRef} className="contextlayer-messages" aria-live="polite">
             {messages.length === 0 ? (
               <div className="contextlayer-empty-state">
-                <MessageCircle aria-hidden="true" size={28} strokeWidth={1.7} />
-                <p>No messages yet</p>
+                <span className="contextlayer-empty-mark" aria-hidden="true">
+                  <MessageCircle size={30} strokeWidth={1.7} />
+                </span>
+                <div>
+                  <h2>Ready for this page</h2>
+                  <p>Ask ContextLayer AI anything.</p>
+                </div>
               </div>
             ) : (
               messages.map((message) => (
@@ -204,20 +197,18 @@ export function AssistantWidget({
         </section>
       )}
 
-      <button
-        className="contextlayer-launcher"
-        type="button"
-        aria-label={isOpen ? "Close ContextLayer assistant" : "Open ContextLayer assistant"}
-        aria-expanded={isOpen}
-        title={isOpen ? "Close ContextLayer" : "Open ContextLayer"}
-        onClick={() => setIsOpen((current) => !current)}
-      >
-        {isOpen ? (
-          <X aria-hidden="true" size={22} strokeWidth={2} />
-        ) : (
+      {!isOpen && (
+        <button
+          className="contextlayer-launcher"
+          type="button"
+          aria-label="Open ContextLayer assistant"
+          aria-expanded={false}
+          title="Open ContextLayer"
+          onClick={() => setIsOpen(true)}
+        >
           <Sparkles aria-hidden="true" size={22} strokeWidth={2} />
-        )}
-      </button>
+        </button>
+      )}
     </>
   );
 }
