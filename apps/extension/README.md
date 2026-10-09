@@ -16,6 +16,21 @@ message -> mock snapshot -> mock agent response -> chat history
 The replacement boundary is `src/integration/agentSession.ts`. Real adapters
 can replace `src/mocks` without changing the chat component.
 
+## API mode
+
+The API adapter uses extension runtime messaging so page context is sent by the
+background service worker rather than page JavaScript. Build it with:
+
+```bash
+npm run build:api -w apps/extension
+```
+
+API mode targets `http://127.0.0.1:8787/api/agent/query` by default and adds
+that exact origin to `host_permissions`. The normal `build` remains mock-only
+and does not request backend host access. A deployed API origin can be supplied
+with `VITE_CONTEXTLAYER_API_BASE_URL`; its matching manifest permission must be
+updated before distribution.
+
 ## Build and load
 
 ```bash

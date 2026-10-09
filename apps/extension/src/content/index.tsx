@@ -1,6 +1,6 @@
 import { createRoot } from "react-dom/client";
 
-import { createMockSession } from "../mocks/createMockSession";
+import { createRuntime } from "../bootstrap/createRuntime";
 import { AssistantWidget } from "../ui/AssistantWidget";
 import styles from "./styles.css?inline";
 
@@ -26,11 +26,13 @@ function mountExtensionShell(): void {
   shadowRoot.append(styleElement, appRoot);
   document.documentElement.append(host);
 
+  const runtime = createRuntime(document);
   createRoot(appRoot).render(
     <AssistantWidget
       activationTarget={host}
       activationEvent={ACTIVATE_EVENT}
-      agentSession={createMockSession(document)}
+      agentSession={runtime.agentSession}
+      modeLabel={runtime.modeLabel}
     />
   );
 }

@@ -15,6 +15,7 @@ interface AssistantWidgetProps {
   activationTarget: HTMLElement;
   activationEvent: string;
   agentSession: AgentSession;
+  modeLabel: string;
 }
 
 function createMessage(text: string, role: ChatMessage["role"]): ChatMessage {
@@ -28,7 +29,8 @@ function createMessage(text: string, role: ChatMessage["role"]): ChatMessage {
 export function AssistantWidget({
   activationTarget,
   activationEvent,
-  agentSession
+  agentSession,
+  modeLabel
 }: AssistantWidgetProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [draft, setDraft] = useState("");
@@ -110,7 +112,7 @@ export function AssistantWidget({
               </span>
               <div>
                 <h1>ContextLayer</h1>
-                <p><span aria-hidden="true" />Mock mode</p>
+                <p><span aria-hidden="true" />{modeLabel}</p>
               </div>
             </div>
             <div className="contextlayer-header-actions">

@@ -3,7 +3,7 @@ import { defineConfig } from "vite";
 
 export default defineConfig({
   plugins: [react()],
-  publicDir: "public",
+  publicDir: false,
   define: {
     "process.env.NODE_ENV": JSON.stringify("production")
   },

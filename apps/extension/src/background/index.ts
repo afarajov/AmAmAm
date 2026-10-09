@@ -1,3 +1,6 @@
+import { queryAgentApi } from "./apiClient";
+import { isAgentQueryMessage } from "../messages/agentMessages";
+
 const SUPPORTED_PROTOCOLS = new Set(["http:", "https:"]);
 
 function isSupportedPage(url: string | undefined): boolean {
@@ -40,4 +43,11 @@ chrome.action.onClicked.addListener(async (tab) => {
     console.warn("ContextLayer activation failed", error);
     await showActivationError(tab.id, "ContextLayer activation failed.");
   }
+});
+
+chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) => {
+  if (!isAgentQueryMessage(message)) return false;
+
+  void queryAgentApi(message.payload).then(sendResponse);
+  return true;
 });
