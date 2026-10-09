@@ -12,6 +12,14 @@ interface Candidate {
   text: string;
   composite: boolean;
   suppressesDescendants: boolean;
+  order: number;
+  priority: number;
+}
+
+interface DiscoveredElement {
+  element: Element;
+  order: number;
+  priority: number;
 }
 
 const CANDIDATE_SELECTOR = [
@@ -39,10 +47,6 @@ const CANDIDATE_SELECTOR = [
   "article span",
   "main span",
   "[role='main'] span",
-  "ytd-rich-item-renderer",
-  "ytd-video-renderer",
-  "ytd-grid-video-renderer",
-  "ytd-compact-video-renderer",
   "div[class]",
 ].join(",");
 
@@ -72,8 +76,9 @@ export function extractSemanticElements(
 ): SemanticElement[] {
   const candidates: Candidate[] = [];
   const seenText = new Map<string, number>();
+  const discovered = discoverCandidateElements(document, options);
 
-  for (const element of document.querySelectorAll(CANDIDATE_SELECTOR)) {
+  for (const { element, order } of discovered) {
     if (!isEligible(element, document, options)) continue;
 
     const classification = classify(element);
@@ -105,34 +110,51 @@ export function extractSemanticElements(
         existing.element.contains(element) &&
         (!existing.composite || !existing.suppressesDescendants)
       ) {
-        candidates[existingIndex] = { element, text, ...classification };
+        candidates[existingIndex] = {
+          element,
+          text,
+          order,
+          priority: scoreCandidate(element, classification.kind, text),
+          ...classification,
+        };
       }
       continue;
     }
 
     seenText.set(dedupeKey, candidates.length);
-    candidates.push({ element, text, ...classification });
+    candidates.push({
+      element,
+      text,
+      order,
+      priority: scoreCandidate(element, classification.kind, text),
+      ...classification,
+    });
   }
 
   const deduplicated = candidates.filter((candidate) =>
     !hasMoreSpecificTextDescendant(candidate, candidates),
   );
 
-  const bounded: Candidate[] = [];
+  const ranked = [...deduplicated].sort(
+    (left, right) => right.priority - left.priority || left.order - right.order,
+  );
+  const boundedByPriority: Candidate[] = [];
   let totalTextLength = 0;
-  for (const candidate of deduplicated) {
-    if (bounded.length >= options.maxElements) break;
+  for (const candidate of ranked) {
+    if (boundedByPriority.length >= options.maxElements) break;
     const available = options.maxTotalTextLength - totalTextLength;
-    if (available <= 0) break;
+    if (available < minimumLength(candidate.kind)) break;
 
-    const text = candidate.text.slice(
-      0,
+    const text = truncateDeterministically(
+      candidate.text,
       Math.min(options.maxElementTextLength, available),
     );
-    if (!text) continue;
-    bounded.push({ ...candidate, text });
+    if (!isMeaningful(text, candidate.kind)) continue;
+    boundedByPriority.push({ ...candidate, text });
     totalTextLength += text.length;
   }
+
+  const bounded = boundedByPriority.sort((left, right) => left.order - right.order);
 
   for (const candidate of bounded) mapper.getOrAssign(candidate.element);
 
@@ -156,6 +178,92 @@ export function extractSemanticElements(
       ...(rect ? { rect } : {}),
     };
   });
+}
+
+function discoverCandidateElements(
+  document: Document,
+  options: ResolvedPageEngineOptions,
+): DiscoveredElement[] {
+  const root = document.body ?? document.documentElement;
+  const view = document.defaultView;
+  if (!root || !view) return [];
+
+  const elements: DiscoveredElement[] = [];
+  let visited = 0;
+  const walker = document.createTreeWalker(
+    root,
+    view.NodeFilter.SHOW_ELEMENT,
+    {
+      acceptNode(node) {
+        const element = node as Element;
+        if (isStaticallyExcludedSubtree(element, options)) {
+          return view.NodeFilter.FILTER_REJECT;
+        }
+        return view.NodeFilter.FILTER_ACCEPT;
+      },
+    },
+  );
+
+  let node = walker.nextNode();
+  while (node && visited < options.maxDomNodes) {
+    visited += 1;
+    const element = node as Element;
+    if (isCandidateElement(element)) {
+      elements.push({
+        element,
+        order: visited,
+        priority: discoveryPriority(element),
+      });
+    }
+    node = walker.nextNode();
+  }
+  return elements
+    .sort((left, right) => right.priority - left.priority || left.order - right.order)
+    .slice(0, options.maxCandidates)
+    .sort((left, right) => left.order - right.order);
+}
+
+function isCandidateElement(element: Element): boolean {
+  if (element.matches(CANDIDATE_SELECTOR)) return true;
+  const tag = element.tagName.toLowerCase();
+  return tag.includes("-") && isRepeatedSibling(element);
+}
+
+function discoveryPriority(element: Element): number {
+  const tag = element.tagName.toLowerCase();
+  const inPrimaryContent = element.closest(
+    "main,article,[role='main'],[role='article']",
+  ) !== null;
+  const semanticTag = /^(h[1-6]|p|blockquote|li|tr|article|section)$/.test(tag);
+  const customCard = tag.includes("-") && isRepeatedSibling(element);
+  return (
+    (inPrimaryContent ? 1_000 : 0) +
+    (semanticTag ? 100 : 0) +
+    (customCard ? 80 : 0) +
+    (tag === "a" ? 10 : 0)
+  );
+}
+
+function isStaticallyExcludedSubtree(
+  element: Element,
+  options: ResolvedPageEngineOptions,
+): boolean {
+  if (element.matches("script,style,template,noscript,[hidden],[inert],[aria-hidden='true']")) {
+    return true;
+  }
+  if (element.hasAttribute(options.ignoredUiAttribute)) return true;
+  if (element.matches("nav,[role='navigation'],[role='menu'],[role='menubar']")) return true;
+
+  const tag = element.tagName.toLowerCase();
+  const outsidePrimaryContent = element.closest("main,article,[role='main'],[role='article']") === null;
+  return outsidePrimaryContent && (
+    tag === "header" ||
+    tag === "footer" ||
+    tag === "aside" ||
+    element.getAttribute("role") === "banner" ||
+    element.getAttribute("role") === "contentinfo" ||
+    element.getAttribute("role") === "complementary"
+  );
 }
 
 function isEligible(
@@ -192,7 +300,7 @@ function classify(
     const explicit = isExplicitCaptionContainer(element);
     return { kind: "paragraph", composite: explicit, suppressesDescendants: explicit };
   }
-  if (isKnownCardElement(tag)) {
+  if (tag.includes("-") && isRepeatedSibling(element)) {
     return { kind: "card", composite: true, suppressesDescendants: true };
   }
   if (tag === "span" && element.children.length === 0) {
@@ -225,27 +333,43 @@ function classify(
   return undefined;
 }
 
-function isKnownCardElement(tag: string): boolean {
-  return [
-    "ytd-rich-item-renderer",
-    "ytd-video-renderer",
-    "ytd-grid-video-renderer",
-    "ytd-compact-video-renderer",
-  ].includes(tag);
-}
-
 function isRepeatedSibling(element: Element): boolean {
-  if (element.tagName !== "DIV" || !element.parentElement) return false;
+  if (!element.parentElement) return false;
+  const isCustomElement = element.tagName.includes("-");
+  if (element.tagName !== "DIV" && !isCustomElement) return false;
   const signature = classSignature(element);
-  if (!signature) return false;
+  if (!signature && !isCustomElement) return false;
   let matches = 0;
   for (const sibling of element.parentElement.children) {
-    if (sibling.tagName === element.tagName && classSignature(sibling) === signature) {
+    if (
+      sibling.tagName === element.tagName &&
+      (isCustomElement || classSignature(sibling) === signature)
+    ) {
       matches += 1;
       if (matches >= 2) return true;
     }
   }
   return false;
+}
+
+function scoreCandidate(element: Element, kind: ElementKind, text: string): number {
+  const base: Record<ElementKind, number> = {
+    paragraph: 100,
+    heading: 110,
+    article: 90,
+    comment: 90,
+    card: 88,
+    "list-item": 82,
+    "table-row": 82,
+    section: 70,
+    link: 50,
+    other: 40,
+  };
+  const inPrimaryContent = element.closest(
+    "main,article,[role='main'],[role='article']",
+  ) !== null;
+  const textBonus = Math.min(10, Math.floor(text.length / 100));
+  return base[kind] + (inPrimaryContent ? 25 : 0) + textBonus;
 }
 
 function classSignature(element: Element): string {
@@ -370,8 +494,21 @@ function normalizeText(text: string): string {
 }
 
 function isMeaningful(text: string, kind: ElementKind): boolean {
-  const minimum = kind === "link" || kind === "heading" ? 2 : 8;
-  return text.length >= minimum && /[\p{L}\p{N}]/u.test(text);
+  return text.length >= minimumLength(kind) && /[\p{L}\p{N}]/u.test(text);
+}
+
+function minimumLength(kind: ElementKind): number {
+  return kind === "link" || kind === "heading" ? 2 : 8;
+}
+
+function truncateDeterministically(text: string, limit: number): string {
+  if (text.length <= limit) return text;
+  const prefix = text.slice(0, limit);
+  const lastWhitespace = prefix.lastIndexOf(" ");
+  return (lastWhitespace >= Math.floor(limit * 0.8)
+    ? prefix.slice(0, lastWhitespace)
+    : prefix
+  ).trimEnd();
 }
 
 function extractSafeAttributes(element: Element): Record<string, string> {

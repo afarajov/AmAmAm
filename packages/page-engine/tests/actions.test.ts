@@ -195,6 +195,36 @@ describe("Page Engine action execution", () => {
     engine.dispose();
   });
 
+  it("restores engine-owned effects even after the target becomes detached", () => {
+    loadFixture();
+    const engine = createPageEngine(document, { observeMutations: false });
+    const snapshot = engine.scan();
+    const strikeId = idForText(snapshot, "legacy recommendation");
+    const target = document.querySelector("#target-strike")! as HTMLElement;
+
+    engine.executeActions({
+      pageId: snapshot.pageId,
+      snapshotVersion: snapshot.snapshotVersion,
+      actions: [
+        { type: "DIM", targetElementIds: [strikeId] },
+        { type: "STRIKE", targetElementIds: [strikeId] },
+      ],
+    });
+    target.remove();
+
+    const restored = engine.executeActions({
+      pageId: snapshot.pageId,
+      snapshotVersion: snapshot.snapshotVersion,
+      actions: [{ type: "RESTORE_ALL" }],
+    });
+    expect(restored[0]).toMatchObject({ success: true, affectedElementIds: [strikeId] });
+    expect(target.classList.contains("contextlayer-engine-dim")).toBe(false);
+    expect(target.classList.contains("contextlayer-engine-strike")).toBe(false);
+    expect(target.querySelector("[data-contextlayer-strike-overlay]")).toBeNull();
+    expect(document.querySelector("[data-contextlayer-engine-styles]")).toBeNull();
+    engine.dispose();
+  });
+
   it("rejects an old pageId before applying any target", () => {
     loadFixture();
     const engine = createPageEngine(document, { observeMutations: false });
