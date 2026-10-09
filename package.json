@@ -1,0 +1,13 @@
+{
+  "name": "contextlayer",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "workspaces": ["apps/*", "packages/*"],
+  "scripts": {
+    "typecheck:contracts": "tsc --noEmit -p packages/shared/tsconfig.json"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.3"
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "name": "@contextlayer/extension",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@contextlayer/shared": "0.1.0",
+    "@contextlayer/page-engine": "0.1.0"
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "name": "@contextlayer/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@contextlayer/shared": "0.1.0"
+  }
+}

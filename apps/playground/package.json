@@ -1,0 +1,10 @@
+{
+  "name": "@contextlayer/playground",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "dependencies": {
+    "@contextlayer/page-engine": "0.1.0",
+    "@contextlayer/shared": "0.1.0"
+  }
+}
