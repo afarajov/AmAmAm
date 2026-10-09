@@ -1,11 +1,16 @@
 import {
   AlertCircle,
+  CircleCheck,
+  CircleX,
+  LocateFixed,
   MessageCircle,
   RotateCcw,
   Send,
   Sparkles
 } from "lucide-react";
 import { FormEvent, KeyboardEvent, useEffect, useId, useRef, useState } from "react";
+
+import type { ActionExecutionResult, AgentResponse } from "@contextlayer/shared";
 
 import type { AgentSession } from "../integration/agentSession";
 import type { ChatMessage, RequestStatus } from "./types";
@@ -25,6 +30,45 @@ function createMessage(text: string, role: ChatMessage["role"]): ChatMessage {
   };
 }
 
+function createAssistantMessage(
+  response: AgentResponse,
+  executionResults: ActionExecutionResult[]
+): ChatMessage {
+  const failedResults = executionResults.filter((result) => !result.success);
+  const successfulResults = executionResults.filter((result) => result.success);
+  const affectedElementCount = executionResults.reduce(
+    (total, result) => total + result.affectedElementIds.length,
+    0
+  );
+  let text = response.message;
+
+  if (failedResults.length > 0) {
+    text = successfulResults.length > 0 || affectedElementCount > 0
+      ? "Some page actions completed, but others could not be applied."
+      : "I could not apply the requested page changes.";
+  }
+
+  return {
+    id: crypto.randomUUID(),
+    role: "assistant",
+    text,
+    references: response.references,
+    executionResults
+  };
+}
+
+function createLocalActionMessage(
+  text: string,
+  executionResults: ActionExecutionResult[]
+): ChatMessage {
+  return {
+    id: crypto.randomUUID(),
+    role: "assistant",
+    text,
+    executionResults
+  };
+}
+
 export function AssistantWidget({
   activationTarget,
   activationEvent,
@@ -36,6 +80,7 @@ export function AssistantWidget({
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [status, setStatus] = useState<RequestStatus>("idle");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [hasPageModifications, setHasPageModifications] = useState(false);
   const inputId = useId();
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const messagesRef = useRef<HTMLDivElement>(null);
@@ -71,19 +116,67 @@ export function AssistantWidget({
     setMessages((current) => [...current, createMessage(query, "user")]);
     setDraft("");
     setErrorMessage(null);
+    setHasPageModifications(false);
     setStatus("loading");
 
     try {
-      const { response } = await agentSession.submit(query);
+      const { response, executionResults, hasPageModifications: hasChanges } =
+        await agentSession.submit(query);
       setMessages((current) => [
         ...current,
-        createMessage(response.message, "assistant")
+        createAssistantMessage(response, executionResults)
       ]);
+      setHasPageModifications(hasChanges);
       setStatus("idle");
     } catch (error) {
       setErrorMessage(
         error instanceof Error ? error.message : "The agent request failed unexpectedly."
       );
+      setStatus("error");
+    }
+  };
+
+  const handleReferenceClick = (messageId: string, elementId: string) => {
+    try {
+      const result = agentSession.scrollToReference(elementId);
+      setMessages((current) => current.map((message) => (
+        message.id === messageId
+          ? {
+              ...message,
+              executionResults: [
+                ...(message.executionResults ?? []),
+                ...result.executionResults
+              ]
+            }
+          : message
+      )));
+      setHasPageModifications(result.hasPageModifications);
+      setErrorMessage(null);
+      setStatus("idle");
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error ? error.message : "Reference navigation failed."
+      );
+      setStatus("error");
+    }
+  };
+
+  const handleReset = () => {
+    try {
+      const result = agentSession.reset();
+      const resetSucceeded = result.executionResults.every((item) => item.success);
+      setMessages((current) => [
+        ...current,
+        createLocalActionMessage(
+          resetSucceeded ? "Page changes were reset." : "Page changes could not be reset.",
+          result.executionResults
+        )
+      ]);
+      setHasPageModifications(result.hasPageModifications);
+      setErrorMessage(null);
+      setStatus("idle");
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Page reset failed.");
       setStatus("error");
     }
   };
@@ -118,8 +211,9 @@ export function AssistantWidget({
               className="contextlayer-icon-button"
               type="button"
               aria-label="Reset page changes"
-              title="No page changes to reset"
-              disabled
+              title={hasPageModifications ? "Reset page changes" : "No page changes to reset"}
+              disabled={!hasPageModifications || status === "loading"}
+              onClick={handleReset}
             >
               <RotateCcw aria-hidden="true" size={18} />
             </button>
@@ -142,8 +236,56 @@ export function AssistantWidget({
                   className={`contextlayer-message contextlayer-message--${message.role}`}
                   key={message.id}
                 >
-                  <span>{message.role === "user" ? "You" : "ContextLayer"}</span>
+                  <span className="contextlayer-message-author">
+                    {message.role === "user" ? "You" : "ContextLayer"}
+                  </span>
                   <p>{message.text}</p>
+
+                  {message.references && message.references.length > 0 && (
+                    <div className="contextlayer-references" aria-label="Sources">
+                      <strong>Sources</strong>
+                      {message.references.map((reference, index) => (
+                        <button
+                          type="button"
+                          key={`${reference.elementId}-${index}`}
+                          onClick={() => handleReferenceClick(message.id, reference.elementId)}
+                        >
+                          <LocateFixed aria-hidden="true" size={14} />
+                          <span>{reference.excerpt || reference.elementId}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {message.executionResults && message.executionResults.length > 0 && (
+                    <div className="contextlayer-results" aria-label="Action results">
+                      {message.executionResults.map((result, index) => (
+                        <div
+                          className={`contextlayer-result contextlayer-result--${result.success ? "success" : "failure"}`}
+                          key={`${result.type}-${index}`}
+                        >
+                          {result.success ? (
+                            <CircleCheck aria-hidden="true" size={14} />
+                          ) : (
+                            <CircleX aria-hidden="true" size={14} />
+                          )}
+                          <div>
+                            <strong>{result.type.replaceAll("_", " ")}</strong>
+                            <span>
+                              {result.success
+                                ? `${result.affectedElementIds.length} element${result.affectedElementIds.length === 1 ? "" : "s"} affected`
+                                : [
+                                    result.affectedElementIds.length > 0
+                                      ? `${result.affectedElementIds.length} element${result.affectedElementIds.length === 1 ? "" : "s"} affected.`
+                                      : "",
+                                    result.failures.map((failure) => failure.message).join(" ")
+                                  ].filter(Boolean).join(" ")}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               ))
             )}

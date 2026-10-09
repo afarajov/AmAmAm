@@ -8,6 +8,7 @@
     "build:api": "vite build --mode api --config vite.content.config.ts && vite build --mode api --config vite.background.config.ts",
     "build:mock": "vite build --config vite.content.config.ts && vite build --config vite.background.config.ts",
     "test": "vitest run",
+    "test:e2e": "playwright test",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
@@ -19,6 +20,7 @@
   },
   "devDependencies": {
     "@types/chrome": "^0.3.4",
+    "@playwright/test": "^1.64.0",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.2",
