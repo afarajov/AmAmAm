@@ -2,7 +2,9 @@ import type { SemanticElement } from "@contextlayer/shared";
 
 const MAX_CANDIDATES = 80;
 const MAX_CONTEXT_CHARACTERS = 30_000;
-const MAX_EMBEDDING_TEXT_CHARACTERS = 1_000;
+const EMBEDDING_SEGMENT_CHARACTERS = 800;
+const EMBEDDING_SEGMENT_OVERLAP = 100;
+const MAX_EMBEDDING_SEGMENTS_PER_ELEMENT = 6;
 const TOKEN_PATTERN = /[\p{L}\p{N}]{2,}/gu;
 
 export interface EmbeddingProvider {
@@ -13,6 +15,11 @@ interface RankedElement {
   element: SemanticElement;
   index: number;
   score: number;
+}
+
+interface EmbeddingSegment {
+  elementIndex: number;
+  text: string;
 }
 
 function tokens(value: string): Set<string> {
@@ -43,9 +50,12 @@ export async function selectSemanticCandidateElements(
   const eligible = elements.filter((element) => element.visible && element.text.trim().length > 0);
   if (eligible.length === 0) return [];
 
+  const segments = eligible.flatMap((element, elementIndex) =>
+    segmentElementText(element, elementIndex)
+  );
   const inputs = [
     query,
-    ...eligible.map((element) => `${element.kind}: ${element.text.slice(0, MAX_EMBEDDING_TEXT_CHARACTERS)}`)
+    ...segments.map((segment) => segment.text)
   ];
   const vectors = await provider.embed(inputs);
   if (vectors.length !== inputs.length || vectors.some((vector) => vector.length === 0)) {
@@ -54,6 +64,15 @@ export async function selectSemanticCandidateElements(
 
   const queryVector = vectors[0]!;
   const queryTokens = tokens(query);
+  const semanticScores = new Array<number>(eligible.length).fill(-1);
+  for (let index = 0; index < segments.length; index += 1) {
+    const segment = segments[index]!;
+    const similarity = cosineSimilarity(queryVector, vectors[index + 1]!);
+    semanticScores[segment.elementIndex] = Math.max(
+      semanticScores[segment.elementIndex]!,
+      similarity
+    );
+  }
   const ranked: RankedElement[] = eligible.map((element, index) => {
     const elementTokens = tokens(element.text);
     let lexicalMatches = 0;
@@ -61,13 +80,30 @@ export async function selectSemanticCandidateElements(
     return {
       element,
       index,
-      score: cosineSimilarity(queryVector, vectors[index + 1]!)
+      score: semanticScores[index]!
         + Math.min(lexicalMatches, 5) * 0.02
         + (element.kind === "heading" ? 0.005 : 0)
     };
   }).sort((left, right) => right.score - left.score || left.index - right.index);
 
   return selectWithinBudget(ranked);
+}
+
+function segmentElementText(element: SemanticElement, elementIndex: number): EmbeddingSegment[] {
+  const segments: EmbeddingSegment[] = [];
+  const step = EMBEDDING_SEGMENT_CHARACTERS - EMBEDDING_SEGMENT_OVERLAP;
+  for (
+    let start = 0;
+    start < element.text.length && segments.length < MAX_EMBEDDING_SEGMENTS_PER_ELEMENT;
+    start += step
+  ) {
+    const text = element.text.slice(start, start + EMBEDDING_SEGMENT_CHARACTERS).trim();
+    if (text.length > 0) {
+      segments.push({ elementIndex, text: `${element.kind}: ${text}` });
+    }
+    if (start + EMBEDDING_SEGMENT_CHARACTERS >= element.text.length) break;
+  }
+  return segments;
 }
 
 function cosineSimilarity(left: number[], right: number[]): number {

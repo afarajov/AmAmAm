@@ -52,4 +52,47 @@ describe("candidate retrieval", () => {
     await expect(selectSemanticCandidateElements("партнёр", elements, provider))
       .rejects.toThrow("invalid vector set");
   });
+
+  it("finds a relevant element near the end of a large page and long text block", async () => {
+    const distractors: SemanticElement[] = Array.from({ length: 160 }, (_, index) => ({
+      id: `node-${String(index + 1).padStart(5, "0")}`,
+      kind: "paragraph",
+      text: `Unrelated navigation and weather content ${index}`,
+      tagName: "P",
+      visible: true
+    }));
+    const relevant: SemanticElement = {
+      id: "node-00161",
+      kind: "section",
+      text: `${"Unrelated introduction. ".repeat(75)}Red Square is the official GameSummit partner.`,
+      tagName: "SECTION",
+      visible: true
+    };
+    const provider: EmbeddingProvider = {
+      embed: async (inputs) => inputs.map((input, index) =>
+        index === 0 || input.includes("official GameSummit partner") ? [1, 0] : [0, 1]
+      )
+    };
+
+    const selected = await selectSemanticCandidateElements(
+      "Кто официальный партнёр GameSummit?",
+      [...distractors, relevant],
+      provider
+    );
+
+    expect(selected[0]?.id).toBe("node-00161");
+    expect(selected).toHaveLength(80);
+  });
+
+  it("keeps DOM order stable when semantic scores are equal", async () => {
+    const provider: EmbeddingProvider = {
+      embed: async (inputs) => inputs.map(() => [1, 0])
+    };
+
+    const first = await selectSemanticCandidateElements("нейтральный запрос", elements, provider);
+    const second = await selectSemanticCandidateElements("нейтральный запрос", elements, provider);
+
+    expect(first.map((element) => element.id)).toEqual(["node-00001", "node-00002"]);
+    expect(second.map((element) => element.id)).toEqual(first.map((element) => element.id));
+  });
 });

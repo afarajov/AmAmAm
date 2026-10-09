@@ -14,8 +14,9 @@ extension origins with commas.
 
 Candidate retrieval uses `OPENAI_EMBEDDING_MODEL` (default:
 `text-embedding-3-small`) so queries and page content can be matched across
-languages before the grounded planning step. Embedding inputs are batched and
-bounded; the API key remains server-side.
+languages before the grounded planning step. Long elements are embedded as
+overlapping bounded segments, then ranked by their strongest segment. Embedding
+inputs are batched and bounded; the API key remains server-side.
 
 ## Grounding guarantees
 
