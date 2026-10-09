@@ -34,24 +34,103 @@ Rules:
 
 ## Current state
 
-The repository contains the working API, semantic page engine, Manifest V3 extension, integration tests, and playground. The extension includes persistent local chat history and user settings for theme, accent color, text and launcher sizes, launcher position, response style, answer length, emoji usage, keyboard behavior, and custom instructions.
+The repository contains the working API, semantic page engine, Manifest V3 extension, and automated integration tests. The public playground workspace is reserved for future development and is not implemented. The extension includes persistent local chat history and user settings for theme, accent color, text and launcher sizes, launcher position, response style, answer length, emoji usage, keyboard behavior, and custom instructions.
 
 Chat history and settings are stored in `chrome.storage.local`. API keys remain server-side and are never stored in the extension.
 
-Install dependencies and validate the workspace with:
+## Complete local setup
+
+### Requirements
+
+- Desktop Google Chrome or another Chromium browser with unpacked-extension support;
+- Git;
+- Node.js 22.12 or newer with npm;
+- internet access;
+- an OpenAI API key with available API billing or credits.
+
+Mobile browsers are not supported.
+
+### 1. Clone and install
 
 ```bash
-npm install
+git clone https://github.com/afarajov/AmAmAm.git
+cd AmAmAm
+npm ci
+```
+
+### 2. Create the backend environment file
+
+On macOS or Linux:
+
+```bash
+cp apps/api/.env.example apps/api/.env
+```
+
+On Windows PowerShell:
+
+```powershell
+Copy-Item apps/api/.env.example apps/api/.env
+```
+
+Open `apps/api/.env` and set at least:
+
+```dotenv
+OPENAI_API_KEY=your_openai_api_key
+OPENAI_MODEL=gpt-4.1-mini
+OPENAI_EMBEDDING_MODEL=text-embedding-3-small
+HOST=127.0.0.1
+PORT=8787
+```
+
+Never commit or share `apps/api/.env`. The API key belongs only in the backend.
+
+### 3. Build and install the extension
+
+```bash
+npm run release --workspace @contextlayer/extension
+```
+
+1. Open `chrome://extensions`.
+2. Enable **Developer mode**.
+3. Select **Load unpacked**.
+4. Choose `apps/extension/release/contextlayer-extension`.
+5. Copy the extension ID displayed by Chrome.
+
+Add that exact ID to `apps/api/.env`:
+
+```dotenv
+CORS_ALLOWED_ORIGINS=chrome-extension://YOUR_EXTENSION_ID
+```
+
+### 4. Start and verify the backend
+
+```bash
+npm run dev --workspace @contextlayer/api
+```
+
+Open these URLs and confirm that both services report success:
+
+- `http://127.0.0.1:8787/health`
+- `http://127.0.0.1:8787/ready`
+
+Open or refresh a normal HTTP(S) webpage, click the ContextLayer toolbar icon,
+and confirm that the panel displays **API mode**. After rebuilding, select
+**Reload** for ContextLayer on `chrome://extensions` and refresh the webpage.
+
+### 5. Validate the repository
+
+```bash
 npm run check
+npm run test:e2e --workspace @contextlayer/extension
 ```
 
-Build the unpacked extension with:
+## Known runtime limitations
 
-```bash
-npm run build --workspace @contextlayer/extension
-```
-
-Then load `apps/extension/dist` from `chrome://extensions` with Developer mode enabled. The local API endpoint expected by the development manifest is `http://127.0.0.1:8787`.
+- ContextLayer does not run on `chrome://` pages, the Chrome Web Store, or other protected browser pages.
+- The local backend must remain running while the extension is used.
+- OpenAI API usage may incur charges.
+- Image-only, canvas, video, closed Shadow DOM, cross-origin iframe, and non-rendered virtualized content may not be readable.
+- The prototype has no public hosted backend or public playground deployment.
 
 ## Start here
 
