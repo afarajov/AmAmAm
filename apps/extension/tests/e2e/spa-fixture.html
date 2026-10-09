@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SPA post fixture</title>
+    <style>
+      body { margin: 0; background: #f4f4f5; font-family: Arial, sans-serif; }
+      nav { position: fixed; top: 16px; left: 16px; z-index: 2; }
+      main { max-width: 640px; margin: 120px auto; padding: 24px; background: white; }
+    </style>
+  </head>
+  <body>
+    <nav><button id="next-post" type="button">Next post</button></nav>
+    <main>
+      <article class="social-post"><span>First post: morning coffee beside the old city walls.</span></article>
+    </main>
+    <script>
+      history.replaceState({}, "", "/post/one");
+      document.querySelector("#next-post").addEventListener("click", () => {
+        history.pushState({}, "", "/post/two");
+        window.setTimeout(() => {
+          document.querySelector("main").innerHTML = `
+            <article class="social-post"><span>Second post: evening lights across the modern skyline.</span></article>
+          `;
+        }, 420);
+      });
+    </script>
+    <script src="/dist-mock/content.js"></script>
+  </body>
+</html>

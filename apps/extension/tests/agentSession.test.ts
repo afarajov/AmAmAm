@@ -1,5 +1,12 @@
 import { createPageEngine } from "@contextlayer/page-engine";
-import type { AgentRequest, AgentResponse } from "@contextlayer/shared";
+import type {
+  ActionExecutionResult,
+  AgentRequest,
+  AgentResponse,
+  ExecuteActionsRequest,
+  PageEngine,
+  PageSnapshot
+} from "@contextlayer/shared";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -8,7 +15,10 @@ import {
 } from "../src/integration/agentSession";
 
 class HighlightFirstElementGateway implements AgentGateway {
+  readonly snapshotVersions: number[] = [];
+
   async query(request: AgentRequest): Promise<AgentResponse> {
+    this.snapshotVersions.push(request.page.snapshotVersion);
     const target = request.page.elements[0];
     if (!target) throw new Error("The test page did not produce a semantic element.");
 
@@ -20,6 +30,34 @@ class HighlightFirstElementGateway implements AgentGateway {
       references: [{ elementId: target.id, excerpt: target.text }],
       actions: [{ type: "HIGHLIGHT", targetElementIds: [target.id] }]
     };
+  }
+}
+
+class StaleOncePageEngine implements PageEngine {
+  scanCount = 0;
+  private stale = true;
+
+  constructor(private readonly delegate: PageEngine) {}
+
+  scan(): PageSnapshot {
+    this.scanCount += 1;
+    return this.delegate.scan();
+  }
+
+  executeActions(request: ExecuteActionsRequest): ActionExecutionResult[] {
+    if (this.stale) {
+      this.stale = false;
+      return request.actions.map((action) => ({
+        type: action.type,
+        success: false,
+        affectedElementIds: [],
+        failures: [{
+          code: "STALE_SNAPSHOT",
+          message: "The page changed before execution."
+        }]
+      }));
+    }
+    return this.delegate.executeActions(request);
   }
 }
 
@@ -129,5 +167,31 @@ describe("AgentSession with the semantic page engine", () => {
     expect(document.querySelector("p")?.classList).toContain(
       "contextlayer-engine-highlight"
     );
+  });
+
+  it("creates a fresh snapshot for every repeated request", async () => {
+    const gateway = new HighlightFirstElementGateway();
+    const session = createAgentSession(createPageEngine(document), gateway);
+
+    await session.submit("First question");
+    await session.submit("Second question");
+
+    expect(gateway.snapshotVersions).toEqual([1, 2]);
+  });
+
+  it("rescans and retries once after a stale snapshot", async () => {
+    const pageEngine = new StaleOncePageEngine(createPageEngine(document));
+    const gateway = new HighlightFirstElementGateway();
+    const session = createAgentSession(pageEngine, gateway);
+
+    const result = await session.submit("Recover the action");
+
+    expect(pageEngine.scanCount).toBe(2);
+    expect(gateway.snapshotVersions).toEqual([1, 2]);
+    expect(result.recoveredFromStale).toBe(true);
+    expect(result.executionResults[0]).toMatchObject({
+      type: "HIGHLIGHT",
+      success: true
+    });
   });
 });
