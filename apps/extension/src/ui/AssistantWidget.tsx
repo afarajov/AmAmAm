@@ -159,6 +159,7 @@ export function AssistantWidget({
   const messagesRef = useRef<HTMLDivElement>(null);
   const requestInFlightRef = useRef(false);
   const connectionCheckedRef = useRef(false);
+  const backendConfirmedRef = useRef(false);
 
   useEffect(() => {
     let active = true;
@@ -213,6 +214,7 @@ export function AssistantWidget({
     if (!isOpen || connectionCheckedRef.current) return;
     connectionCheckedRef.current = true;
     void checkConnection().then((result) => {
+      if (backendConfirmedRef.current) return;
       const messages: Record<ConnectionCheckResult["status"], string | null> = {
         ready: null,
         offline: "The ContextLayer backend is offline. Start it and try again.",
@@ -298,6 +300,8 @@ export function AssistantWidget({
       } = await agentSession.submit(queryWithPreferences(query, settings), {
         onProgress: (progress) => setActivityMessage(PROGRESS_MESSAGES[progress])
       });
+      backendConfirmedRef.current = true;
+      setConnectionNotice(null);
       setMessages((current) => [
         ...current,
         createAssistantMessage(response, executionResults, query)
