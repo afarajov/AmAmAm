@@ -4,6 +4,10 @@ const SETTINGS_KEY = "contextlayer.settings.v1";
 const HISTORY_KEY = "contextlayer.history.v1";
 const MAX_SESSIONS = 20;
 const MAX_MESSAGES = 50;
+const MAX_MESSAGE_LENGTH = 4_000;
+const MAX_TITLE_LENGTH = 200;
+const MAX_URL_LENGTH = 2_048;
+let historyMutation: Promise<unknown> = Promise.resolve();
 
 export interface UserSettings {
   theme: "system" | "light" | "dark";
@@ -61,7 +65,12 @@ async function readValue<T>(key: string): Promise<T | undefined> {
   }
   if (!localStorageAvailable()) return undefined;
   const raw = localStorage.getItem(key);
-  return raw ? JSON.parse(raw) as T : undefined;
+  if (!raw) return undefined;
+  try {
+    return JSON.parse(raw) as T;
+  } catch {
+    return undefined;
+  }
 }
 
 async function writeValue(key: string, value: unknown): Promise<void> {
@@ -74,7 +83,21 @@ async function writeValue(key: string, value: unknown): Promise<void> {
 
 export async function loadSettings(): Promise<UserSettings> {
   const stored = await readValue<Partial<UserSettings>>(SETTINGS_KEY);
-  return { ...DEFAULT_SETTINGS, ...stored };
+  if (!stored || typeof stored !== "object") return DEFAULT_SETTINGS;
+  const merged = { ...DEFAULT_SETTINGS, ...stored };
+  return {
+    theme: ["system", "light", "dark"].includes(merged.theme) ? merged.theme : DEFAULT_SETTINGS.theme,
+    accentColor: /^#[0-9a-f]{6}$/i.test(merged.accentColor) ? merged.accentColor : DEFAULT_SETTINGS.accentColor,
+    textSize: ["small", "medium", "large"].includes(merged.textSize) ? merged.textSize : DEFAULT_SETTINGS.textSize,
+    buttonSize: ["small", "medium", "large"].includes(merged.buttonSize) ? merged.buttonSize : DEFAULT_SETTINGS.buttonSize,
+    buttonPosition: ["left", "right"].includes(merged.buttonPosition) ? merged.buttonPosition : DEFAULT_SETTINGS.buttonPosition,
+    responseStyle: ["normal", "warm", "friendly", "professional", "direct"].includes(merged.responseStyle) ? merged.responseStyle : DEFAULT_SETTINGS.responseStyle,
+    answerLength: ["short", "normal", "detailed"].includes(merged.answerLength) ? merged.answerLength : DEFAULT_SETTINGS.answerLength,
+    emoji: ["none", "few", "lots"].includes(merged.emoji) ? merged.emoji : DEFAULT_SETTINGS.emoji,
+    enterSends: typeof merged.enterSends === "boolean" ? merged.enterSends : DEFAULT_SETTINGS.enterSends,
+    saveHistory: typeof merged.saveHistory === "boolean" ? merged.saveHistory : DEFAULT_SETTINGS.saveHistory,
+    customInstructions: typeof merged.customInstructions === "string" ? merged.customInstructions.slice(0, 500) : ""
+  } as UserSettings;
 }
 
 export async function saveSettings(settings: UserSettings): Promise<void> {
@@ -82,37 +105,87 @@ export async function saveSettings(settings: UserSettings): Promise<void> {
 }
 
 export async function loadHistory(): Promise<ChatSession[]> {
-  return (await readValue<ChatSession[]>(HISTORY_KEY) ?? [])
-    .filter((session) => Array.isArray(session.messages))
+  const stored = await readValue<unknown>(HISTORY_KEY);
+  if (!Array.isArray(stored)) return [];
+  return stored
+    .filter(isSafeSession)
+    .map(normalizeSession)
     .sort((left, right) => right.updatedAt - left.updatedAt)
     .slice(0, MAX_SESSIONS);
+}
+
+function enqueueHistoryMutation<T>(mutation: () => Promise<T>): Promise<T> {
+  const next = historyMutation.then(mutation, mutation);
+  historyMutation = next.then(() => undefined, () => undefined);
+  return next;
 }
 
 export async function saveChatSession(session: ChatSession): Promise<ChatSession[]> {
-  const history = await loadHistory();
-  const normalized = {
-    ...session,
-    messages: session.messages.slice(-MAX_MESSAGES)
-  };
-  const next = [normalized, ...history.filter((item) => item.id !== session.id)]
-    .sort((left, right) => right.updatedAt - left.updatedAt)
-    .slice(0, MAX_SESSIONS);
-  await writeValue(HISTORY_KEY, next);
-  return next;
+  return enqueueHistoryMutation(async () => {
+    const history = await loadHistory();
+    const normalized = normalizeSession(session);
+    const next = [normalized, ...history.filter((item) => item.id !== session.id)]
+      .sort((left, right) => right.updatedAt - left.updatedAt)
+      .slice(0, MAX_SESSIONS);
+    await writeValue(HISTORY_KEY, next);
+    return next;
+  });
 }
 
 export async function deleteChatSession(id: string): Promise<ChatSession[]> {
-  const next = (await loadHistory()).filter((session) => session.id !== id);
-  await writeValue(HISTORY_KEY, next);
-  return next;
+  return enqueueHistoryMutation(async () => {
+    const next = (await loadHistory()).filter((session) => session.id !== id);
+    await writeValue(HISTORY_KEY, next);
+    return next;
+  });
 }
 
 export async function clearChatHistory(): Promise<void> {
-  await writeValue(HISTORY_KEY, []);
+  await enqueueHistoryMutation(() => writeValue(HISTORY_KEY, []));
 }
 
 export function messagesForStorage(messages: ChatMessage[]): StoredMessage[] {
-  return messages.map(({ role, text }) => ({ role, text })).slice(-MAX_MESSAGES);
+  return messages.map(({ role, text }) => ({
+    role,
+    text: sanitizeText(text, MAX_MESSAGE_LENGTH)
+  })).slice(-MAX_MESSAGES);
+}
+
+function sanitizeText(value: string, maxLength: number): string {
+  return value.replace(/\bnode-\d+\b/gi, "referenced element").slice(0, maxLength);
+}
+
+function isSafeSession(value: unknown): value is ChatSession {
+  if (typeof value !== "object" || value === null) return false;
+  const session = value as Record<string, unknown>;
+  return typeof session.id === "string" && typeof session.url === "string" &&
+    typeof session.title === "string" && typeof session.updatedAt === "number" &&
+    Array.isArray(session.messages) && session.messages.every((message) => {
+      if (typeof message !== "object" || message === null) return false;
+      const candidate = message as Record<string, unknown>;
+      return (candidate.role === "user" || candidate.role === "assistant") &&
+        typeof candidate.text === "string";
+    });
+}
+
+function normalizeSession(session: ChatSession): ChatSession {
+  let url = "";
+  try {
+    const parsed = new URL(session.url);
+    if (parsed.protocol === "http:" || parsed.protocol === "https:") url = parsed.href;
+  } catch {
+    url = "";
+  }
+  return {
+    id: session.id.slice(0, 100),
+    url: url.slice(0, MAX_URL_LENGTH),
+    title: sanitizeText(session.title, MAX_TITLE_LENGTH) || "Untitled page",
+    updatedAt: Number.isFinite(session.updatedAt) ? session.updatedAt : Date.now(),
+    messages: session.messages.map(({ role, text }) => ({
+      role,
+      text: sanitizeText(text, MAX_MESSAGE_LENGTH)
+    })).slice(-MAX_MESSAGES)
+  };
 }
 
 export function messagesFromStorage(messages: StoredMessage[]): ChatMessage[] {

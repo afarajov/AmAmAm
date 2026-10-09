@@ -1,17 +1,6 @@
-import { queryAgentApi } from "./apiClient";
-import { isAgentQueryMessage } from "../messages/agentMessages";
-
-const SUPPORTED_PROTOCOLS = new Set(["http:", "https:"]);
-
-function isSupportedPage(url: string | undefined): boolean {
-  if (!url) return false;
-
-  try {
-    return SUPPORTED_PROTOCOLS.has(new URL(url).protocol);
-  } catch {
-    return false;
-  }
-}
+import { checkAgentApiConnection, queryAgentApi } from "./apiClient";
+import { isAgentHealthMessage, isAgentQueryMessage } from "../messages/agentMessages";
+import { isSupportedPage } from "./activationPolicy";
 
 async function showActivationError(tabId: number, message: string): Promise<void> {
   await Promise.all([
@@ -56,6 +45,10 @@ chrome.action.onClicked.addListener(async (tab) => {
 });
 
 chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) => {
+  if (isAgentHealthMessage(message)) {
+    void checkAgentApiConnection().then(sendResponse);
+    return true;
+  }
   if (!isAgentQueryMessage(message)) return false;
 
   void queryAgentApi(message.payload).then(sendResponse);

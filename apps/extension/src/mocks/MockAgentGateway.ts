@@ -34,6 +34,14 @@ export class MockAgentGateway implements AgentGateway {
       throw new AgentGatewayError("MODEL_ERROR", "The mock backend failed.");
     }
 
+    if (request.query === "Simulate backend unavailable") {
+      throw new AgentGatewayError("INTERNAL_ERROR", "The mock backend is offline.");
+    }
+
+    if (request.query === "Simulate rate limit") {
+      throw new AgentGatewayError("RATE_LIMITED", "The mock backend rate limit was reached.");
+    }
+
     if (
       request.query === "Repeat stale snapshot" ||
       (request.query === "Recover from stale snapshot" && !this.staleSimulationUsed)
@@ -67,6 +75,8 @@ export class MockAgentGateway implements AgentGateway {
     }];
 
     switch (request.query) {
+      case "Information absent":
+        return createResponse(request, "This information is not present on the page.", [], []);
       case "Factual query":
         return createResponse(request, "This is a grounded factual answer.", references, []);
       case "Highlight target":
