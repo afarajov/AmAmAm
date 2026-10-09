@@ -3,7 +3,25 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc --noEmit -p tsconfig.json",
+    "start": "tsx src/server.ts",
+    "test": "vitest run"
+  },
   "dependencies": {
-    "@contextlayer/shared": "0.1.0"
+    "@contextlayer/shared": "0.1.0",
+    "dotenv": "^17.2.3",
+    "express": "^5.1.0",
+    "openai": "^7.31.0",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.3",
+    "@types/node": "^24.0.0",
+    "@types/supertest": "^6.0.3",
+    "supertest": "^7.1.1",
+    "tsx": "^4.20.3",
+    "vitest": "^3.2.4"
   }
 }
