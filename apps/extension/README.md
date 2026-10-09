@@ -69,6 +69,24 @@ Checkpoint 3 Playwright fixtures cover a nested Instagram-like caption, SPA
 post navigation, repeated queries, stale recovery, backend timeout, and an
 honest no-readable-text result.
 
+## Action lifecycle
+
+The chat keeps the backend plan separate from the browser execution result.
+Every `ActionExecutionResult` is presented with its real affected and failed
+counts for `SCROLL_TO`, `HIGHLIGHT`, `DIM`, `STRIKE`, `HIDE`, `CLEAR_EFFECT`,
+and `RESTORE_ALL`. Raw element IDs and executor messages are never rendered.
+
+Source navigation replaces its previous `HIGHLIGHT` and `SCROLL_TO` status
+instead of appending duplicates. Reset remains a local `RESTORE_ALL`, is
+enabled only while real effects remain, and never calls the backend. A
+synchronous request lock prevents duplicate submissions before React state has
+time to render.
+
+Checkpoint 4 Playwright coverage asserts the actual DOM classes and restored
+state for all effects, partial failure reporting, stale retry limits, route
+changes during a request, malformed responses, backend errors, and duplicate
+submit protection.
+
 Load `apps/extension/dist` as an unpacked extension in Chrome. Open a regular
 HTTP(S) page and click the ContextLayer toolbar action. Restricted browser
 pages are rejected without requesting broad host access.

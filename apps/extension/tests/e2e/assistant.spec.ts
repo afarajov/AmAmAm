@@ -36,6 +36,9 @@ test("does not present a failed highlight as successful", async ({ page }) => {
   await expect(page.getByText("I could not apply the requested page changes.")).toBeVisible();
   await expect(page.getByText("Highlighted the matching content.")).toHaveCount(0);
   await expect(page.getByLabel("Action results")).toContainText("HIGHLIGHT");
-  await expect(page.getByLabel("Action results")).toContainText("Unknown element ID");
+  await expect(page.getByLabel("Action results")).toContainText(
+    "A target was not found in the current page."
+  );
+  await expect(page.getByLabel("Action results")).not.toContainText(/node-\d+/);
   await expect(page.getByRole("button", { name: "Reset page changes" })).toBeDisabled();
 });

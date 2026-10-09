@@ -2,11 +2,14 @@ import {
   AlertCircle,
   CircleCheck,
   CircleX,
+  Clock3,
+  FileText,
   LocateFixed,
-  MessageCircle,
+  Plus,
   RotateCcw,
   Send,
-  Sparkles
+  Settings,
+  X
 } from "lucide-react";
 import { FormEvent, KeyboardEvent, useEffect, useId, useRef, useState } from "react";
 
@@ -16,6 +19,9 @@ import type {
   AgentSession,
   AgentSessionProgress
 } from "../integration/agentSession";
+import { presentActionResult } from "./actionPresentation";
+import { HistoryPanel, MessageActions, SettingsPanel } from "./DemoPanels";
+import { LotusMark } from "./LotusMark";
 import type { ChatMessage, RequestStatus } from "./types";
 
 interface AssistantWidgetProps {
@@ -48,6 +54,11 @@ function readableError(error: unknown): string {
       return "The AI backend took too long to respond. Try again.";
     case "RATE_LIMITED":
       return "The AI backend is busy. Wait a moment and try again.";
+    case "INVALID_RESPONSE":
+      return "The AI backend returned an invalid response. No page action was run.";
+    case "MODEL_ERROR":
+    case "INTERNAL_ERROR":
+      return "The AI backend could not prepare the request. No page action was run.";
     default:
       return error instanceof Error ? error.message : "The agent request failed unexpectedly.";
   }
@@ -107,6 +118,7 @@ export function AssistantWidget({
   modeLabel
 }: AssistantWidgetProps) {
   const [isOpen, setIsOpen] = useState(false);
+  const [view, setView] = useState<"chat" | "history" | "settings">("chat");
   const [draft, setDraft] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [status, setStatus] = useState<RequestStatus>("idle");
@@ -114,9 +126,13 @@ export function AssistantWidget({
   const [hasPageModifications, setHasPageModifications] = useState(false);
   const [activityMessage, setActivityMessage] = useState("Waiting for response…");
   const [pageNotice, setPageNotice] = useState<string | null>(null);
+  const [pageTitle, setPageTitle] = useState(
+    activationTarget.ownerDocument.title || "Current page"
+  );
   const inputId = useId();
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const messagesRef = useRef<HTMLDivElement>(null);
+  const requestInFlightRef = useRef(false);
 
   useEffect(() => {
     const togglePanel = () => setIsOpen((current) => !current);
@@ -152,6 +168,7 @@ export function AssistantWidget({
       if (nextUrl === currentUrl) return;
 
       currentUrl = nextUrl;
+      setPageTitle(activationTarget.ownerDocument.title || "Current page");
       agentSession.invalidatePage();
       setMessages([]);
       setHasPageModifications(false);
@@ -173,7 +190,8 @@ export function AssistantWidget({
 
   const submitMessage = async () => {
     const query = draft.trim();
-    if (!query || status === "loading") return;
+    if (!query || requestInFlightRef.current) return;
+    requestInFlightRef.current = true;
 
     setMessages((current) => [...current, createMessage(query, "user")]);
     setDraft("");
@@ -211,6 +229,8 @@ export function AssistantWidget({
       }
       setErrorMessage(readableError(error));
       setStatus("error");
+    } finally {
+      requestInFlightRef.current = false;
     }
   };
 
@@ -273,6 +293,8 @@ export function AssistantWidget({
     }
   };
 
+  const suggestions = ["Summarize this page", "Key points", "Explain simply", "Translate"];
+
   return (
     <>
       {isOpen && (
@@ -280,25 +302,22 @@ export function AssistantWidget({
           <header className="contextlayer-header">
             <div className="contextlayer-brand">
               <span className="contextlayer-brand-mark" aria-hidden="true">
-                <Sparkles size={18} strokeWidth={2.2} />
+                <LotusMark />
               </span>
               <div>
                 <h1>ContextLayer</h1>
                 <p><span aria-hidden="true" />{modeLabel}</p>
               </div>
             </div>
-            <button
-              className="contextlayer-icon-button"
-              type="button"
-              aria-label="Reset page changes"
-              title={hasPageModifications ? "Reset page changes" : "No page changes to reset"}
-              disabled={!hasPageModifications || status === "loading"}
-              onClick={handleReset}
-            >
-              <RotateCcw aria-hidden="true" size={18} />
-            </button>
+            <div className="contextlayer-header-actions">
+              <button className="contextlayer-icon-button" type="button" aria-label="Reset page changes" title={hasPageModifications ? "Reset page changes" : "No page changes to reset"} disabled={!hasPageModifications || status === "loading"} onClick={handleReset}><Plus aria-hidden="true" size={18} /></button>
+              <button className={`contextlayer-icon-button${view === "history" ? " is-active" : ""}`} type="button" aria-label="History" title="History" onClick={() => setView(view === "history" ? "chat" : "history")}><Clock3 aria-hidden="true" size={18} /></button>
+              <button className={`contextlayer-icon-button${view === "settings" ? " is-active" : ""}`} type="button" aria-label="Settings" title="Settings" onClick={() => setView(view === "settings" ? "chat" : "settings")}><Settings aria-hidden="true" size={18} /></button>
+              <button className="contextlayer-icon-button" type="button" aria-label="Close" title="Close" onClick={() => setIsOpen(false)}><X aria-hidden="true" size={18} /></button>
+            </div>
           </header>
 
+          {view === "settings" ? <SettingsPanel /> : view === "history" ? <HistoryPanel messages={messages} /> : <>
           <div ref={messagesRef} className="contextlayer-messages" aria-live="polite">
             {pageNotice && (
               <div className="contextlayer-page-state" role="status">
@@ -310,7 +329,7 @@ export function AssistantWidget({
             {messages.length === 0 ? (
               <div className="contextlayer-empty-state">
                 <span className="contextlayer-empty-mark" aria-hidden="true">
-                  <MessageCircle size={30} strokeWidth={1.7} />
+                  <LotusMark />
                 </span>
                 <div>
                   <h2>Ready for this page</h2>
@@ -346,33 +365,29 @@ export function AssistantWidget({
 
                   {message.executionResults && message.executionResults.length > 0 && (
                     <div className="contextlayer-results" aria-label="Action results">
-                      {message.executionResults.map((result, index) => (
-                        <div
-                          className={`contextlayer-result contextlayer-result--${result.success ? "success" : "failure"}`}
-                          key={`${result.type}-${index}`}
-                        >
-                          {result.success ? (
-                            <CircleCheck aria-hidden="true" size={14} />
-                          ) : (
-                            <CircleX aria-hidden="true" size={14} />
-                          )}
-                          <div>
-                            <strong>{result.type.replaceAll("_", " ")}</strong>
-                            <span>
-                              {result.success
-                                ? `${result.affectedElementIds.length} element${result.affectedElementIds.length === 1 ? "" : "s"} affected`
-                                : [
-                                    result.affectedElementIds.length > 0
-                                      ? `${result.affectedElementIds.length} element${result.affectedElementIds.length === 1 ? "" : "s"} affected.`
-                                      : "",
-                                    result.failures.map((failure) => failure.message).join(" ")
-                                  ].filter(Boolean).join(" ")}
-                            </span>
+                      {message.executionResults.map((result, index) => {
+                        const presentation = presentActionResult(result);
+                        return (
+                          <div
+                            className={`contextlayer-result contextlayer-result--${presentation.tone}`}
+                            key={`${result.type}-${index}`}
+                          >
+                            {presentation.tone === "success" ? (
+                              <CircleCheck aria-hidden="true" size={14} />
+                            ) : (
+                              <CircleX aria-hidden="true" size={14} />
+                            )}
+                            <div>
+                              <strong>{presentation.label}</strong>
+                              <span>{presentation.summary}</span>
+                              {presentation.detail && <span>{presentation.detail}</span>}
+                            </div>
                           </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
+                  {message.role === "assistant" && <MessageActions text={message.text} />}
                 </div>
               ))
             )}
@@ -392,6 +407,21 @@ export function AssistantWidget({
                 <p>{errorMessage}</p>
               </div>
             )}
+          </div>
+
+          <div className="contextlayer-suggestions" aria-label="Suggested prompts">
+            {suggestions.map((suggestion) => (
+              <button type="button" key={suggestion} onClick={() => {
+                setDraft(suggestion);
+                inputRef.current?.focus();
+              }}>{suggestion}</button>
+            ))}
+          </div>
+
+          <div className="contextlayer-reading" title={pageTitle}>
+            <FileText aria-hidden="true" size={12} />
+            <span>Reading:</span>
+            <strong>{pageTitle}</strong>
           </div>
 
           <form className="contextlayer-composer" onSubmit={handleSubmit}>
@@ -425,6 +455,8 @@ export function AssistantWidget({
               <Send aria-hidden="true" size={18} />
             </button>
           </form>
+          </>}
+
         </section>
       )}
 
@@ -437,7 +469,7 @@ export function AssistantWidget({
           title="Open ContextLayer"
           onClick={() => setIsOpen(true)}
         >
-          <Sparkles aria-hidden="true" size={22} strokeWidth={2} />
+          <LotusMark />
         </button>
       )}
     </>
