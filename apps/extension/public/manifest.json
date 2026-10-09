@@ -1,0 +1,14 @@
+{
+  "manifest_version": 3,
+  "name": "ContextLayer",
+  "description": "A context-aware assistant for the webpage you are viewing.",
+  "version": "0.1.0",
+  "permissions": ["activeTab", "scripting"],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_title": "Activate ContextLayer"
+  }
+}

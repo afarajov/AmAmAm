@@ -1,6 +1,20 @@
 # Extension workspace — Developer 3
 
-No extension implementation exists yet.
+The first extension shell is implemented. It builds a Manifest V3 extension
+that injects an isolated Shadow DOM launcher after a user clicks the toolbar
+action. Chat and integration behavior are intentionally deferred to later
+milestones.
+
+## Build and load
+
+```bash
+npm run typecheck -w apps/extension
+npm run build -w apps/extension
+```
+
+Load `apps/extension/dist` as an unpacked extension in Chrome. Open a regular
+HTTP(S) page and click the ContextLayer toolbar action. Restricted browser
+pages are rejected without requesting broad host access.
 
 ## Responsibilities
 

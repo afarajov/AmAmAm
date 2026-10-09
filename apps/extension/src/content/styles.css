@@ -1,0 +1,55 @@
+:host {
+  all: initial;
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 2147483647;
+  display: block;
+  width: 52px;
+  height: 52px;
+  color-scheme: light dark;
+}
+
+.contextlayer-launcher {
+  box-sizing: border-box;
+  display: grid;
+  width: 52px;
+  height: 52px;
+  padding: 0;
+  place-items: center;
+  border: 1px solid rgba(17, 24, 39, 0.16);
+  border-radius: 8px;
+  background: #111827;
+  color: #ffffff;
+  box-shadow: 0 10px 24px rgba(17, 24, 39, 0.24);
+  cursor: pointer;
+  transition: background-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+}
+
+.contextlayer-launcher:hover {
+  background: #0f766e;
+  box-shadow: 0 12px 28px rgba(15, 118, 110, 0.28);
+  transform: translateY(-1px);
+}
+
+.contextlayer-launcher:focus-visible {
+  outline: 3px solid #f59e0b;
+  outline-offset: 3px;
+}
+
+.contextlayer-launcher:active {
+  transform: translateY(0);
+}
+
+@media (max-width: 480px) {
+  :host {
+    right: 12px;
+    bottom: 12px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .contextlayer-launcher {
+    transition: none;
+  }
+}
