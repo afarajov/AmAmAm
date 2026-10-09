@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { createPageEngine } from "../src/index.js";
+import ordinaryArticleHtml from "./fixtures/ordinary-article.html?raw";
 import semanticPageHtml from "./fixtures/semantic-page.html?raw";
 
 function load(html: string): void {
@@ -38,19 +39,24 @@ describe("SemanticPageEngine", () => {
   });
 
   it("maps a snapshot ID to the real element and reverses highlighting", () => {
-    load(`<p>Privacy controls are available for every account.</p>`);
-    const paragraph = document.querySelector("p")!;
+    load(ordinaryArticleHtml);
+    const paragraph = document.querySelector("#shade-paragraph")! as HTMLElement;
+    const originalStyle = paragraph.getAttribute("style");
     const engine = createPageEngine(document);
     const snapshot = engine.scan();
-    const id = snapshot.elements[0]!.id;
+    const target = snapshot.elements.find((element) =>
+      element.text.startsWith("Tree canopies provide shade"),
+    )!;
 
     const applied = engine.executeActions({
       pageId: snapshot.pageId,
       snapshotVersion: snapshot.snapshotVersion,
-      actions: [{ type: "HIGHLIGHT", targetElementIds: [id] }],
+      actions: [{ type: "HIGHLIGHT", targetElementIds: [target.id] }],
     });
-    expect(applied[0]).toMatchObject({ success: true, affectedElementIds: [id] });
+    expect(applied[0]).toMatchObject({ success: true, affectedElementIds: [target.id] });
     expect(paragraph.classList.contains("contextlayer-engine-highlight")).toBe(true);
+    expect(getComputedStyle(paragraph).backgroundColor).toBe("rgba(255, 224, 64, 0.42)");
+    expect(paragraph.getAttribute("style")).toBe(originalStyle);
 
     const restored = engine.executeActions({
       pageId: snapshot.pageId,
@@ -59,7 +65,46 @@ describe("SemanticPageEngine", () => {
     });
     expect(restored[0]?.success).toBe(true);
     expect(paragraph.classList.contains("contextlayer-engine-highlight")).toBe(false);
+    expect(paragraph.getAttribute("style")).toBe(originalStyle);
+    expect(getComputedStyle(paragraph).backgroundColor).toBe("rgb(12, 34, 56)");
     expect(document.querySelector("[data-contextlayer-engine-styles]")).toBeNull();
+  });
+
+  it("keeps a repeated highlight idempotent and preserves website styles", () => {
+    load(ordinaryArticleHtml);
+    const paragraph = document.querySelector("#shade-paragraph")! as HTMLElement;
+    const originalStyle = paragraph.getAttribute("style");
+    const engine = createPageEngine(document);
+    const snapshot = engine.scan();
+    const id = snapshot.elements.find((element) =>
+      element.text.startsWith("Tree canopies provide shade"),
+    )!.id;
+    const request = {
+      pageId: snapshot.pageId,
+      snapshotVersion: snapshot.snapshotVersion,
+      actions: [{ type: "HIGHLIGHT" as const, targetElementIds: [id, id] }],
+    };
+
+    const first = engine.executeActions(request);
+    const second = engine.executeActions(request);
+
+    expect(first[0]).toMatchObject({ success: true, affectedElementIds: [id] });
+    expect(second[0]).toMatchObject({ success: true, affectedElementIds: [id] });
+    expect(paragraph.classList.toString().match(/contextlayer-engine-highlight/g)).toHaveLength(1);
+    expect(document.querySelectorAll("style[data-contextlayer-engine-styles]")).toHaveLength(1);
+    expect(paragraph.getAttribute("style")).toBe(originalStyle);
+  });
+
+  it("extracts the ordinary article fixture as headings, paragraphs, list items, and a link", () => {
+    load(ordinaryArticleHtml);
+    const snapshot = createPageEngine(document).scan();
+    const kinds = new Set(snapshot.elements.map((element) => element.kind));
+
+    expect(kinds).toEqual(new Set(["heading", "paragraph", "list-item", "link"]));
+    expect(snapshot.elements.some((element) => element.text.includes("resilient canopy"))).toBe(true);
+    expect(snapshot.elements.find((element) => element.kind === "link")?.href).toBe(
+      "http://localhost:3000/urban-forestry",
+    );
   });
 
   it("applies effects idempotently and clears only engine-owned changes", () => {
@@ -120,6 +165,35 @@ describe("SemanticPageEngine", () => {
     expect(unsafe[0]?.failures[0]?.code).toBe("UNSAFE_TARGET");
   });
 
+  it("scrolls the mapped article element with stable navigation options", () => {
+    load(ordinaryArticleHtml);
+    const paragraph = document.querySelector("#shade-paragraph")!;
+    paragraph.scrollIntoView = vi.fn();
+    const engine = createPageEngine(document);
+    const snapshot = engine.scan();
+    const id = snapshot.elements.find((element) =>
+      element.text.startsWith("Tree canopies provide shade"),
+    )!.id;
+
+    const result = engine.executeActions({
+      pageId: snapshot.pageId,
+      snapshotVersion: snapshot.snapshotVersion,
+      actions: [{ type: "SCROLL_TO", targetElementIds: [id] }],
+    });
+
+    expect(result[0]).toEqual({
+      type: "SCROLL_TO",
+      success: true,
+      affectedElementIds: [id],
+      failures: [],
+    });
+    expect(paragraph.scrollIntoView).toHaveBeenCalledWith({
+      behavior: "smooth",
+      block: "center",
+      inline: "nearest",
+    });
+  });
+
   it("rejects stale snapshots and invalid element IDs without changing the DOM", () => {
     load(`<p>A stable paragraph containing useful information.</p>`);
     const engine = createPageEngine(document);
@@ -132,6 +206,8 @@ describe("SemanticPageEngine", () => {
       actions: [{ type: "HIGHLIGHT", targetElementIds: [first.elements[0]!.id] }],
     });
     expect(stale[0]?.failures[0]?.code).toBe("STALE_SNAPSHOT");
+    expect(stale[0]?.affectedElementIds).toEqual([]);
+    expect(document.querySelector("p")?.classList.contains("contextlayer-engine-highlight")).toBe(false);
 
     const unknown = engine.executeActions({
       pageId: second.pageId,
@@ -155,5 +231,7 @@ describe("SemanticPageEngine", () => {
       actions: [{ type: "HIGHLIGHT", targetElementIds: [id] }],
     });
     expect(result[0]?.failures[0]?.code).toBe("DETACHED_NODE");
+    expect(result[0]?.success).toBe(false);
+    expect(result[0]?.affectedElementIds).toEqual([]);
   });
 });
