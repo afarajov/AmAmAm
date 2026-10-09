@@ -1,7 +1,11 @@
 import type { AgentRequest } from "@contextlayer/shared";
 import { describe, expect, it, vi } from "vitest";
 import type { AgentPlanner } from "../src/ai/agent-planner.js";
-import { buildPageContext, SYSTEM_INSTRUCTIONS } from "../src/ai/openai-agent-planner.js";
+import {
+  buildEvidenceExcerpt,
+  buildPageContext,
+  SYSTEM_INSTRUCTIONS
+} from "../src/ai/openai-agent-planner.js";
 import { PlanningAgentService } from "../src/services/agent-service.js";
 
 const request: AgentRequest = {
@@ -168,5 +172,14 @@ describe("PlanningAgentService", () => {
       kind: "paragraph",
       text: injection
     });
+  });
+
+  it("builds bounded evidence directly from a DOM element", () => {
+    const elementText = "Grounded career evidence ".repeat(30);
+    const excerpt = buildEvidenceExcerpt(elementText);
+
+    expect(excerpt.length).toBeLessThanOrEqual(500);
+    expect(excerpt.length).toBeGreaterThan(0);
+    expect(elementText.startsWith(excerpt)).toBe(true);
   });
 });
