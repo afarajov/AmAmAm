@@ -8,9 +8,16 @@ import {
 import { useState } from "react";
 
 import type { ChatMessage } from "./types";
+import type { ChatSession } from "../storage/userData";
 
-export function HistoryPanel({ messages }: { messages: ChatMessage[] }) {
-  if (messages.length === 0) {
+export function HistoryPanel({ sessions, activeId, onOpen, onDelete, onClear }: {
+  sessions: ChatSession[];
+  activeId: string;
+  onOpen: (session: ChatSession) => void;
+  onDelete: (id: string) => void;
+  onClear: () => void;
+}) {
+  if (sessions.length === 0) {
     return (
       <section className="contextlayer-history" aria-label="Chat history">
         <p>No messages in this page session yet.</p>
@@ -18,19 +25,13 @@ export function HistoryPanel({ messages }: { messages: ChatMessage[] }) {
     );
   }
 
-  return (
-    <section className="contextlayer-history" aria-label="Chat history">
-      {messages.map((message) => (
-        <article
-          className={`contextlayer-history-item contextlayer-history-item--${message.role}`}
-          key={message.id}
-        >
-          <strong>{message.role === "user" ? "You" : "ContextLayer"}</strong>
-          <p>{message.text}</p>
-        </article>
-      ))}
-    </section>
-  );
+  return <section className="contextlayer-history" aria-label="Chat history">
+    <div className="contextlayer-history-toolbar"><strong>Saved chats</strong><button type="button" onClick={onClear}>Clear all</button></div>
+    {sessions.map((session) => <article className={`contextlayer-history-item${session.id === activeId ? " is-active" : ""}`} key={session.id}>
+      <button type="button" className="contextlayer-history-open" onClick={() => onOpen(session)}><strong>{session.title}</strong><p>{session.messages.find((message) => message.role === "user")?.text ?? "Empty chat"}</p><small>{new Date(session.updatedAt).toLocaleString()}</small></button>
+      <button type="button" className="contextlayer-history-delete" aria-label={`Delete chat ${session.title}`} onClick={() => onDelete(session.id)}>×</button>
+    </article>)}
+  </section>;
 }
 
 export function MessageActions({

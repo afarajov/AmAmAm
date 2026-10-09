@@ -133,6 +133,23 @@ test("retry runs the same request again without duplicating the user message", a
   await expect(page.locator(".contextlayer-message--user")).toHaveCount(1);
 });
 
+test("settings persist appearance and chat history survives a reload", async ({ page }) => {
+  await openFixture(page);
+  await page.getByRole("button", { name: "Settings" }).click();
+  await page.getByRole("button", { name: "Dark", exact: true }).click();
+  await page.getByRole("button", { name: "Accent #3b82f6" }).click();
+  await page.getByRole("button", { name: "Settings" }).click();
+  await submit(page, "Factual query");
+  await expect(page.getByText("This is a grounded factual answer.")).toBeVisible();
+  await page.getByRole("button", { name: "History" }).click();
+  await expect(page.getByLabel("Chat history")).toContainText("Factual query");
+
+  await page.reload();
+  await page.getByRole("button", { name: "Open ContextLayer assistant" }).click();
+  await expect(page.getByText("This is a grounded factual answer.")).toBeVisible();
+  await expect(page.locator("#contextlayer-extension-root")).toHaveAttribute("data-contextlayer-theme", "dark");
+});
+
 test("malformed response is rejected before any DOM action", async ({ page }) => {
   await openFixture(page);
   await submit(page, "Simulate malformed response");

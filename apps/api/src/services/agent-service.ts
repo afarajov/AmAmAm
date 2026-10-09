@@ -19,6 +19,7 @@ export type CandidateSelector = (
 const lexicalCandidateSelector: CandidateSelector = async (query, elements) =>
   selectCandidateElements(query, elements);
 const MAX_GROUNDED_PLAN_ATTEMPTS = 2;
+const USER_PREFERENCES_MARKER = "\n\n[CONTEXTLAYER_USER_PREFERENCES]";
 
 /** Production-safe default: never pretends that AI reasoning happened. */
 export class UnavailableAgentService implements AgentService {
@@ -34,10 +35,11 @@ export class PlanningAgentService implements AgentService {
   ) {}
 
   async query(request: AgentRequest): Promise<AgentResponse> {
-    const intent = classifyQueryIntent(request.query);
+    const primaryQuery = request.query.split(USER_PREFERENCES_MARKER, 1)[0]?.trim() || request.query;
+    const intent = classifyQueryIntent(primaryQuery);
     if (intent.kind === "AMBIGUOUS_ACTION") return ambiguousActionResponse(request);
 
-    const candidates = await this.candidateSelector(request.query, request.page.elements);
+    const candidates = await this.candidateSelector(primaryQuery, request.page.elements);
     const planInput = {
       query: request.query,
       pageTitle: request.page.title,
@@ -68,7 +70,7 @@ export class PlanningAgentService implements AgentService {
       requestId: request.requestId,
       pageId: request.page.pageId,
       snapshotVersion: request.page.snapshotVersion,
-      message: responseMessage(request.query, plan, responseActions.length > 0),
+      message: responseMessage(primaryQuery, plan, responseActions.length > 0),
       references: plan.references.map(({ elementId, excerpt }) => ({
         elementId,
         // Grounding is already verified, so a prefix remains an exact quote

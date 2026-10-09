@@ -1,8 +1,6 @@
-# ContextLayer — architecture foundation
+# ContextLayer
 
-This repository is the contract-first starting point for a three-developer hackathon build. It intentionally contains **no implemented backend, DOM engine, Chrome extension, chat UI, or playground**.
-
-The purpose of this commit is to let the team work in parallel without inventing incompatible interfaces.
+ContextLayer is a Chrome extension that understands the current page, answers grounded questions about it, and executes reversible visual actions such as highlighting and scrolling to relevant content.
 
 ## Ownership
 
@@ -36,14 +34,24 @@ Rules:
 
 ## Current state
 
-Only the workspace skeleton, canonical [`shared/types.ts`](shared/types.ts) contract, architectural documentation, and package boundaries exist. Package manifests intentionally omit implementation dependencies and runnable build/dev/test commands; each owner adds those within their area.
+The repository contains the working API, semantic page engine, Manifest V3 extension, integration tests, and playground. The extension includes persistent local chat history and user settings for theme, accent color, text and launcher sizes, launcher position, response style, answer length, emoji usage, keyboard behavior, and custom instructions.
 
-The only current validation command is:
+Chat history and settings are stored in `chrome.storage.local`. API keys remain server-side and are never stored in the extension.
+
+Install dependencies and validate the workspace with:
 
 ```bash
 npm install
-npm run typecheck:contracts
+npm run check
 ```
+
+Build the unpacked extension with:
+
+```bash
+npm run build --workspace @contextlayer/extension
+```
+
+Then load `apps/extension/dist` from `chrome://extensions` with Developer mode enabled. The local API endpoint expected by the development manifest is `http://127.0.0.1:8787`.
 
 ## Start here
 

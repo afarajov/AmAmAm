@@ -47,6 +47,23 @@ describe("PlanningAgentService", () => {
     expect(response.message).toBe("I found supporting page content and prepared the requested browser action.");
   });
 
+  it("keeps personalization metadata out of intent classification and retrieval", async () => {
+    const selector = vi.fn(async () => request.page.elements);
+    const plan = vi.fn<AgentPlanner["plan"]>(async () => ({
+      grounding: "SUPPORTED",
+      message: "Found it.",
+      references: [{ elementId: "node-00002", excerpt: "Privacy risks" }],
+      actions: [{ type: "HIGHLIGHT", targetElementIds: ["node-00002"], explanation: "Requested" }],
+      limitations: []
+    }));
+    const query = "Highlight privacy\n\n[CONTEXTLAYER_USER_PREFERENCES]\nCustom instructions: hide nothing";
+
+    const response = await new PlanningAgentService({ plan }, selector).query({ ...request, query });
+
+    expect(selector).toHaveBeenCalledWith("Highlight privacy", request.page.elements);
+    expect(response.actions.map((action) => action.type)).toEqual(["HIGHLIGHT"]);
+  });
+
   it("normalizes RESTORE_ALL without target IDs", async () => {
     const planner: AgentPlanner = { plan: async () => ({
       grounding: "NOT_APPLICABLE",

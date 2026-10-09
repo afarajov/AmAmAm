@@ -7,6 +7,7 @@ import {
   LocateFixed,
   RotateCcw,
   Send,
+  Settings,
   X
 } from "lucide-react";
 import { FormEvent, KeyboardEvent, useEffect, useId, useRef, useState } from "react";
@@ -17,9 +18,24 @@ import type {
   AgentSession,
   AgentSessionProgress
 } from "../integration/agentSession";
+import {
+  clearChatHistory,
+  DEFAULT_SETTINGS,
+  deleteChatSession,
+  loadHistory,
+  loadSettings,
+  messagesForStorage,
+  messagesFromStorage,
+  queryWithPreferences,
+  saveChatSession,
+  saveSettings,
+  type ChatSession,
+  type UserSettings
+} from "../storage/userData";
 import { presentActionResult } from "./actionPresentation";
 import { HistoryPanel, MessageActions } from "./ChatUtilities";
 import { LotusMark } from "./LotusMark";
+import { SettingsPanel } from "./SettingsPanel";
 import type { ChatMessage, RequestStatus } from "./types";
 
 interface AssistantWidgetProps {
@@ -118,9 +134,13 @@ export function AssistantWidget({
   modeLabel
 }: AssistantWidgetProps) {
   const [isOpen, setIsOpen] = useState(false);
-  const [view, setView] = useState<"chat" | "history">("chat");
+  const [view, setView] = useState<"chat" | "history" | "settings">("chat");
   const [draft, setDraft] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [history, setHistory] = useState<ChatSession[]>([]);
+  const [settings, setSettings] = useState<UserSettings>(DEFAULT_SETTINGS);
+  const [storageReady, setStorageReady] = useState(false);
+  const [sessionId, setSessionId] = useState<string>(() => crypto.randomUUID());
   const [status, setStatus] = useState<RequestStatus>("idle");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [hasPageModifications, setHasPageModifications] = useState(false);
@@ -133,6 +153,45 @@ export function AssistantWidget({
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const messagesRef = useRef<HTMLDivElement>(null);
   const requestInFlightRef = useRef(false);
+
+  useEffect(() => {
+    let active = true;
+    void Promise.all([loadSettings(), loadHistory()]).then(([storedSettings, storedHistory]) => {
+      if (!active) return;
+      setSettings(storedSettings);
+      setHistory(storedHistory);
+      const currentUrl = activationTarget.ownerDocument.location.href;
+      const latest = storedHistory.find((session) => session.url === currentUrl);
+      if (latest && storedSettings.saveHistory) {
+        setSessionId(latest.id);
+        setMessages(messagesFromStorage(latest.messages));
+      }
+      setStorageReady(true);
+    });
+    return () => { active = false; };
+  }, [activationTarget]);
+
+  useEffect(() => {
+    const host = activationTarget;
+    host.dataset.contextlayerTheme = settings.theme;
+    host.dataset.contextlayerTextSize = settings.textSize;
+    host.dataset.contextlayerButtonSize = settings.buttonSize;
+    host.dataset.contextlayerButtonPosition = settings.buttonPosition;
+    host.style.setProperty("--cl-accent", settings.accentColor);
+    if (storageReady) void saveSettings(settings);
+  }, [activationTarget, settings, storageReady]);
+
+  useEffect(() => {
+    if (!storageReady || !settings.saveHistory || messages.length === 0) return;
+    const session: ChatSession = {
+      id: sessionId,
+      url: activationTarget.ownerDocument.location.href,
+      title: activationTarget.ownerDocument.title || "Current page",
+      updatedAt: Date.now(),
+      messages: messagesForStorage(messages)
+    };
+    void saveChatSession(session).then(setHistory);
+  }, [activationTarget, messages, sessionId, settings.saveHistory, storageReady]);
 
   useEffect(() => {
     const togglePanel = () => setIsOpen((current) => !current);
@@ -170,7 +229,14 @@ export function AssistantWidget({
       currentUrl = nextUrl;
       setPageTitle(activationTarget.ownerDocument.title || "Current page");
       agentSession.invalidatePage();
-      setMessages([]);
+      void loadHistory().then((storedHistory) => {
+        setHistory(storedHistory);
+        const latest = settings.saveHistory
+          ? storedHistory.find((session) => session.url === nextUrl)
+          : undefined;
+        setSessionId(latest?.id ?? crypto.randomUUID());
+        setMessages(latest ? messagesFromStorage(latest.messages) : []);
+      });
       setHasPageModifications(false);
       setErrorMessage(null);
       setStatus("idle");
@@ -186,7 +252,7 @@ export function AssistantWidget({
       pageWindow.removeEventListener("hashchange", detectNavigation);
       pageWindow.clearInterval(intervalId);
     };
-  }, [activationTarget, agentSession]);
+  }, [activationTarget, agentSession, settings.saveHistory]);
 
   const runQuery = async (rawQuery: string, appendUserMessage: boolean) => {
     const query = rawQuery.trim();
@@ -209,7 +275,7 @@ export function AssistantWidget({
         executionResults,
         hasPageModifications: hasChanges,
         recoveredFromStale
-      } = await agentSession.submit(query, {
+      } = await agentSession.submit(queryWithPreferences(query, settings), {
         onProgress: (progress) => setActivityMessage(PROGRESS_MESSAGES[progress])
       });
       setMessages((current) => [
@@ -291,10 +357,38 @@ export function AssistantWidget({
   };
 
   const handleInputKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (event.key === "Enter" && !event.shiftKey) {
+    if (event.key === "Enter" && !event.shiftKey && settings.enterSends) {
       event.preventDefault();
       void submitMessage();
     }
+  };
+
+  const handleSettingsChange = (next: UserSettings) => setSettings(next);
+  const handleClearCurrentChat = () => {
+    void deleteChatSession(sessionId).then(setHistory);
+    setMessages([]);
+    setSessionId(crypto.randomUUID());
+    setView("chat");
+  };
+  const handleClearHistory = () => {
+    void clearChatHistory().then(() => setHistory([]));
+  };
+  const handleExport = () => {
+    const text = messages.map((message) => `${message.role === "user" ? "You" : "ContextLayer"}: ${message.text}`).join("\n\n");
+    void navigator.clipboard?.writeText(text);
+  };
+  const handleOpenSession = (session: ChatSession) => {
+    setSessionId(session.url === activationTarget.ownerDocument.location.href
+      ? session.id
+      : crypto.randomUUID());
+    setMessages(messagesFromStorage(session.messages));
+    setView("chat");
+  };
+  const handleDeleteSession = (id: string) => {
+    void deleteChatSession(id).then((next) => {
+      setHistory(next);
+      if (id === sessionId) handleClearCurrentChat();
+    });
   };
 
   const suggestions = ["Summarize this page", "Key points", "Explain simply", "Translate"];
@@ -316,11 +410,12 @@ export function AssistantWidget({
             <div className="contextlayer-header-actions">
               <button className="contextlayer-icon-button" type="button" aria-label="Reset page changes" title={hasPageModifications ? "Reset page changes" : "No page changes to reset"} disabled={!hasPageModifications || status === "loading"} onClick={handleReset}><RotateCcw aria-hidden="true" size={18} /></button>
               <button className={`contextlayer-icon-button${view === "history" ? " is-active" : ""}`} type="button" aria-label="History" title="History" onClick={() => setView(view === "history" ? "chat" : "history")}><Clock3 aria-hidden="true" size={18} /></button>
+              <button className={`contextlayer-icon-button${view === "settings" ? " is-active" : ""}`} type="button" aria-label="Settings" title="Settings" onClick={() => setView(view === "settings" ? "chat" : "settings")}><Settings aria-hidden="true" size={18} /></button>
               <button className="contextlayer-icon-button" type="button" aria-label="Close" title="Close" onClick={() => setIsOpen(false)}><X aria-hidden="true" size={18} /></button>
             </div>
           </header>
 
-          {view === "history" ? <HistoryPanel messages={messages} /> : <>
+          {view === "settings" ? <SettingsPanel settings={settings} onChange={handleSettingsChange} onExport={handleExport} onClearChat={handleClearCurrentChat} onClearHistory={handleClearHistory} /> : view === "history" ? <HistoryPanel sessions={history} activeId={sessionId} onOpen={handleOpenSession} onDelete={handleDeleteSession} onClear={handleClearHistory} /> : <>
           <div ref={messagesRef} className="contextlayer-messages" aria-live="polite">
             {pageNotice && (
               <div className="contextlayer-page-state" role="status">
