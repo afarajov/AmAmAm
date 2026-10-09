@@ -1,0 +1,35 @@
+<header id="fixed-header" style="position: fixed; top: 0; height: 64px">
+  <nav>Documentation navigation</nav>
+</header>
+
+<main>
+  <article>
+    <h1>Reliable browser actions</h1>
+    <p
+      id="target-highlight"
+      class="website-paragraph important-copy"
+      style="background-color: rgb(12, 34, 56); color: rgb(250, 250, 250); scroll-margin-top: 12px"
+    >The first paragraph explains how deterministic highlighting works.</p>
+    <p
+      id="target-dim"
+      class="website-paragraph"
+      style="opacity: 0.85"
+    >The second paragraph describes content that may be temporarily dimmed.</p>
+    <section
+      id="target-strike"
+      class="website-card legacy-card"
+      style="border: 2px solid rgb(10, 20, 30)"
+    >
+      This legacy recommendation can be crossed out without deleting it.
+    </section>
+    <p
+      id="target-hide"
+      class="website-paragraph collapsible-copy"
+      style="display: block; margin-top: 17px"
+    >This optional paragraph can be hidden and then restored without layout residue.</p>
+  </article>
+</main>
+
+<aside data-contextlayer-ui>
+  <p>Extension controls must never appear in the semantic snapshot.</p>
+</aside>

@@ -46,7 +46,9 @@ references private.
 
 Supported actions are `SCROLL_TO`, `HIGHLIGHT`, `DIM`, `STRIKE`, `HIDE`,
 `CLEAR_EFFECT`, and `RESTORE_ALL`. Effects use engine-owned classes and
-overlays and are safe to repeat and remove.
+overlays, support multiple targets and partial failures, and are safe to repeat
+and remove. Scrolling temporarily applies a fixed-header-aware
+`scroll-margin-top` and restores the page's exact inline style afterwards.
 
 Optional extraction limits can be passed to `createPageEngine(document,
 options)`. Defaults are 200 blocks, 30,000 total text characters, and 2,000
