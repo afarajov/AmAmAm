@@ -49,6 +49,8 @@ styles, and extension UI. It uses heuristic card/comment detection; canvas,
 closed shadow roots, cross-origin frames, and virtualized off-screen content
 remain outside the MVP.
 
-The unit suite uses real HTML fixtures from `tests/fixtures/`, including visible
-content, hidden descendants, sensitive form controls, links, and client UI that
-must be excluded from the snapshot.
+The unit suite uses real HTML fixtures from `tests/fixtures/`, including an
+ordinary multi-section article and a security fixture with hidden descendants,
+sensitive form controls, links, and client UI that must be excluded. Tests also
+verify computed highlight styles, repeated-action idempotency, exact scroll
+options, restoration, detached nodes, and stale snapshot rejection.

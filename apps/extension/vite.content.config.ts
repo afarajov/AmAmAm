@@ -1,14 +1,14 @@
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
   plugins: [react()],
   publicDir: false,
   define: {
     "process.env.NODE_ENV": JSON.stringify("production")
   },
   build: {
-    outDir: "dist",
+    outDir: mode === "api" ? "dist" : "dist-mock",
     emptyOutDir: true,
     minify: "oxc",
     lib: {
@@ -18,4 +18,4 @@ export default defineConfig({
       fileName: () => "content.js"
     }
   }
-});
+}));

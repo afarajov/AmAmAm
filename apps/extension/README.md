@@ -16,6 +16,11 @@ message -> mock snapshot -> mock agent response -> chat history
 The orchestration boundary is `src/integration/agentSession.ts`; both real and
 mock gateways implement the same contract.
 
+Assistant responses show source references and the actual result returned for
+every DOM action. Selecting a source performs a local `SCROLL_TO`. The reset
+control becomes available only after the Page Engine reports an affected DOM
+element and executes `RESTORE_ALL` locally without another agent request.
+
 ## API mode
 
 The API adapter uses extension runtime messaging so page context is sent by the
@@ -32,12 +37,20 @@ that exact origin to `host_permissions`. For isolated UI work, use
 with `VITE_CONTEXTLAYER_API_BASE_URL`; its matching manifest permission must be
 updated before distribution.
 
+API builds are written to `dist`; mock builds are isolated in `dist-mock` so
+tests can never replace the unpacked production extension by accident.
+
 ## Build and load
 
 ```bash
 npm run typecheck -w apps/extension
 npm run build -w apps/extension
+npm test -w apps/extension
+npm run test:e2e -w apps/extension
 ```
+
+The Playwright suite builds the deterministic mock mode and covers references,
+scroll navigation, executor results, failed actions, and local reset behavior.
 
 Load `apps/extension/dist` as an unpacked extension in Chrome. Open a regular
 HTTP(S) page and click the ContextLayer toolbar action. Restricted browser

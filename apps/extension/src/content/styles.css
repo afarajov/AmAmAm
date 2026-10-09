@@ -112,7 +112,7 @@ button {
 .contextlayer-brand p,
 .contextlayer-empty-state h2,
 .contextlayer-message p,
-.contextlayer-message span,
+.contextlayer-message-author,
 .contextlayer-error p,
 .contextlayer-empty-state p {
   margin: 0;
@@ -225,7 +225,7 @@ button {
   border-radius: 8px;
 }
 
-.contextlayer-message span {
+.contextlayer-message-author {
   display: block;
   margin-bottom: 3px;
   font-size: 10px;
@@ -247,7 +247,7 @@ button {
   color: #160b03;
 }
 
-.contextlayer-message--user span {
+.contextlayer-message--user .contextlayer-message-author {
   color: #5f2809;
 }
 
@@ -258,8 +258,103 @@ button {
   color: #eeeeef;
 }
 
-.contextlayer-message--assistant span {
+.contextlayer-message--assistant .contextlayer-message-author {
   color: #a6a6ad;
+}
+
+.contextlayer-references,
+.contextlayer-results {
+  display: grid;
+  gap: 6px;
+  margin-top: 10px;
+  padding-top: 9px;
+  border-top: 1px solid #303034;
+}
+
+.contextlayer-references > strong {
+  color: #a6a6ad;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 14px;
+  text-transform: uppercase;
+}
+
+.contextlayer-references button {
+  display: grid;
+  width: 100%;
+  grid-template-columns: 16px minmax(0, 1fr);
+  align-items: start;
+  gap: 6px;
+  padding: 7px 8px;
+  border: 1px solid #45301f;
+  border-radius: 6px;
+  background: #21150e;
+  color: #fdba74;
+  cursor: pointer;
+  text-align: left;
+}
+
+.contextlayer-references button:hover {
+  border-color: #f97316;
+  background: #2a190e;
+}
+
+.contextlayer-references button:focus-visible {
+  outline: 2px solid #fb923c;
+  outline-offset: 1px;
+}
+
+.contextlayer-references button svg {
+  margin-top: 1px;
+}
+
+.contextlayer-references button span {
+  display: -webkit-box;
+  overflow: hidden;
+  color: #fed7aa;
+  font-size: 11px;
+  line-height: 16px;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.contextlayer-result {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  align-items: start;
+  gap: 6px;
+  color: #a6a6ad;
+}
+
+.contextlayer-result > svg {
+  margin-top: 1px;
+}
+
+.contextlayer-result > div {
+  display: grid;
+  gap: 1px;
+}
+
+.contextlayer-result strong {
+  color: #d7d7da;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 14px;
+}
+
+.contextlayer-result span {
+  overflow-wrap: anywhere;
+  font-size: 10px;
+  line-height: 14px;
+}
+
+.contextlayer-result--success > svg {
+  color: #22c55e;
+}
+
+.contextlayer-result--failure > svg,
+.contextlayer-result--failure strong {
+  color: #f87171;
 }
 
 .contextlayer-loading {

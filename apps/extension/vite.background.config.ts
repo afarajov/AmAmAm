@@ -35,7 +35,7 @@ export default defineConfig(({ mode }) => ({
   plugins: [manifestPlugin(mode)],
   publicDir: false,
   build: {
-    outDir: "dist",
+    outDir: mode === "api" ? "dist" : "dist-mock",
     emptyOutDir: false,
     lib: {
       entry: new URL("./src/background/index.ts", import.meta.url).pathname,
