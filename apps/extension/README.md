@@ -37,6 +37,9 @@ that exact origin to `host_permissions`. For isolated UI work, use
 with `VITE_CONTEXTLAYER_API_BASE_URL`; its matching manifest permission must be
 updated before distribution.
 
+API builds are written to `dist`; mock builds are isolated in `dist-mock` so
+tests can never replace the unpacked production extension by accident.
+
 ## Build and load
 
 ```bash
