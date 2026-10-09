@@ -52,6 +52,23 @@ npm run test:e2e -w apps/extension
 The Playwright suite builds the deterministic mock mode and covers references,
 scroll navigation, executor results, failed actions, and local reset behavior.
 
+## Dynamic pages
+
+The extension watches the active document URL so `pushState`, `replaceState`,
+back/forward navigation, and hash navigation invalidate the previous page
+context. Old references and action state are cleared immediately. The next
+request waits briefly for the dynamic DOM to settle and always creates a fresh
+snapshot.
+
+If the Page Engine returns `STALE_SNAPSHOT`, the session performs one automatic
+rescan and repeats the agent request against the new snapshot. A second stale
+result is surfaced as a rescan-required state instead of applying outdated
+actions. Empty pages and backend timeouts have separate user-facing states.
+
+Checkpoint 3 Playwright fixtures cover a nested Instagram-like caption, SPA
+post navigation, repeated queries, stale recovery, backend timeout, and an
+honest no-readable-text result.
+
 Load `apps/extension/dist` as an unpacked extension in Chrome. Open a regular
 HTTP(S) page and click the ContextLayer toolbar action. Restricted browser
 pages are rejected without requesting broad host access.

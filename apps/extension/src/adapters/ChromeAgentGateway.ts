@@ -1,6 +1,9 @@
 import type { AgentRequest } from "@contextlayer/shared";
 
-import type { AgentGateway } from "../integration/agentSession";
+import {
+  AgentGatewayError,
+  type AgentGateway
+} from "../integration/agentSession";
 import {
   AGENT_QUERY_MESSAGE,
   type AgentQueryMessage,
@@ -25,9 +28,12 @@ export class ChromeAgentGateway implements AgentGateway {
     const result: unknown = await chrome.runtime.sendMessage(message);
 
     if (!isMessageResult(result)) {
-      throw new Error("The extension background returned an invalid response.");
+      throw new AgentGatewayError(
+        "INVALID_RESPONSE",
+        "The extension background returned an invalid response."
+      );
     }
-    if (!result.ok) throw new Error(result.error.message);
+    if (!result.ok) throw new AgentGatewayError(result.error.code, result.error.message);
     return result.payload;
   }
 }

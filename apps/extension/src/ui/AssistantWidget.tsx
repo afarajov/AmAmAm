@@ -12,7 +12,10 @@ import { FormEvent, KeyboardEvent, useEffect, useId, useRef, useState } from "re
 
 import type { ActionExecutionResult, AgentResponse } from "@contextlayer/shared";
 
-import type { AgentSession } from "../integration/agentSession";
+import type {
+  AgentSession,
+  AgentSessionProgress
+} from "../integration/agentSession";
 import type { ChatMessage, RequestStatus } from "./types";
 
 interface AssistantWidgetProps {
@@ -20,6 +23,34 @@ interface AssistantWidgetProps {
   activationEvent: string;
   agentSession: AgentSession;
   modeLabel: string;
+}
+
+const PROGRESS_MESSAGES: Record<AgentSessionProgress, string> = {
+  scanning: "Scanning the current page…",
+  "waiting-for-content": "The page is still loading. Waiting for readable text…",
+  requesting: "Asking ContextLayer AI…",
+  rescanning: "The page changed. Scanning again…"
+};
+
+function readableError(error: unknown): string {
+  const code = typeof error === "object" && error !== null && "code" in error
+    ? String(error.code)
+    : "";
+
+  switch (code) {
+    case "PAGE_TEXT_NOT_FOUND":
+      return "No readable page text was found.";
+    case "PAGE_CHANGED":
+      return "The page changed. Submit the request again for the current page.";
+    case "RESCAN_REQUIRED":
+      return "The page changed again. A new scan is required.";
+    case "MODEL_TIMEOUT":
+      return "The AI backend took too long to respond. Try again.";
+    case "RATE_LIMITED":
+      return "The AI backend is busy. Wait a moment and try again.";
+    default:
+      return error instanceof Error ? error.message : "The agent request failed unexpectedly.";
+  }
 }
 
 function createMessage(text: string, role: ChatMessage["role"]): ChatMessage {
@@ -81,6 +112,8 @@ export function AssistantWidget({
   const [status, setStatus] = useState<RequestStatus>("idle");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [hasPageModifications, setHasPageModifications] = useState(false);
+  const [activityMessage, setActivityMessage] = useState("Waiting for response…");
+  const [pageNotice, setPageNotice] = useState<string | null>(null);
   const inputId = useId();
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const messagesRef = useRef<HTMLDivElement>(null);
@@ -109,6 +142,35 @@ export function AssistantWidget({
     return () => activationTarget.ownerDocument.removeEventListener("keydown", closeOnEscape);
   }, [activationTarget]);
 
+  useEffect(() => {
+    const pageWindow = activationTarget.ownerDocument.defaultView;
+    if (!pageWindow) return;
+
+    let currentUrl = pageWindow.location.href;
+    const detectNavigation = () => {
+      const nextUrl = pageWindow.location.href;
+      if (nextUrl === currentUrl) return;
+
+      currentUrl = nextUrl;
+      agentSession.invalidatePage();
+      setMessages([]);
+      setHasPageModifications(false);
+      setErrorMessage(null);
+      setStatus("idle");
+      setPageNotice("Page changed. Previous context was cleared.");
+    };
+
+    pageWindow.addEventListener("popstate", detectNavigation);
+    pageWindow.addEventListener("hashchange", detectNavigation);
+    const intervalId = pageWindow.setInterval(detectNavigation, 300);
+
+    return () => {
+      pageWindow.removeEventListener("popstate", detectNavigation);
+      pageWindow.removeEventListener("hashchange", detectNavigation);
+      pageWindow.clearInterval(intervalId);
+    };
+  }, [activationTarget, agentSession]);
+
   const submitMessage = async () => {
     const query = draft.trim();
     if (!query || status === "loading") return;
@@ -117,21 +179,37 @@ export function AssistantWidget({
     setDraft("");
     setErrorMessage(null);
     setHasPageModifications(false);
+    setPageNotice(null);
+    setActivityMessage(PROGRESS_MESSAGES.scanning);
     setStatus("loading");
 
     try {
-      const { response, executionResults, hasPageModifications: hasChanges } =
-        await agentSession.submit(query);
+      const {
+        response,
+        executionResults,
+        hasPageModifications: hasChanges,
+        recoveredFromStale
+      } = await agentSession.submit(query, {
+        onProgress: (progress) => setActivityMessage(PROGRESS_MESSAGES[progress])
+      });
       setMessages((current) => [
         ...current,
         createAssistantMessage(response, executionResults)
       ]);
       setHasPageModifications(hasChanges);
+      setPageNotice(
+        recoveredFromStale ? "The page changed during processing and was rescanned." : null
+      );
       setStatus("idle");
     } catch (error) {
-      setErrorMessage(
-        error instanceof Error ? error.message : "The agent request failed unexpectedly."
-      );
+      const code = typeof error === "object" && error !== null && "code" in error
+        ? String(error.code)
+        : "";
+      if (code === "PAGE_CHANGED") {
+        setMessages([]);
+        setPageNotice("Page changed. Previous context was cleared.");
+      }
+      setErrorMessage(readableError(error));
       setStatus("error");
     }
   };
@@ -220,6 +298,13 @@ export function AssistantWidget({
           </header>
 
           <div ref={messagesRef} className="contextlayer-messages" aria-live="polite">
+            {pageNotice && (
+              <div className="contextlayer-page-state" role="status">
+                <RotateCcw aria-hidden="true" size={15} />
+                <p>{pageNotice}</p>
+              </div>
+            )}
+
             {messages.length === 0 ? (
               <div className="contextlayer-empty-state">
                 <span className="contextlayer-empty-mark" aria-hidden="true">
@@ -292,8 +377,10 @@ export function AssistantWidget({
 
             {status === "loading" && (
               <div className="contextlayer-loading" role="status">
-                <span /><span /><span />
-                <span className="contextlayer-visually-hidden">Waiting for response</span>
+                <span className="contextlayer-loading-dots" aria-hidden="true">
+                  <i /><i /><i />
+                </span>
+                <span className="contextlayer-loading-copy">{activityMessage}</span>
               </div>
             )}
 
