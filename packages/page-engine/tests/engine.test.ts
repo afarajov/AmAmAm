@@ -196,7 +196,7 @@ describe("SemanticPageEngine", () => {
     });
     expect(paragraph.scrollIntoView).toHaveBeenCalledWith({
       behavior: "smooth",
-      block: "center",
+      block: "start",
       inline: "nearest",
     });
   });
@@ -229,7 +229,7 @@ describe("SemanticPageEngine", () => {
 
   it("reports a mapped element that was detached after scanning", () => {
     load(`<p>A paragraph that will be removed after the page snapshot.</p>`);
-    const engine = createPageEngine(document);
+    const engine = createPageEngine(document, { observeMutations: false });
     const snapshot = engine.scan();
     const id = snapshot.elements[0]!.id;
     document.querySelector("p")!.remove();

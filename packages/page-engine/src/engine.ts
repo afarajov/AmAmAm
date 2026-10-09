@@ -58,6 +58,7 @@ export class SemanticPageEngine implements DynamicPageEngine {
   }
 
   scan(): PageSnapshot {
+    this.observer.flushPendingChanges();
     if (this.lastSnapshotUrl && this.currentUrl() !== this.lastSnapshotUrl) {
       this.invalidateSnapshot("SPA_NAVIGATION");
     }
@@ -117,6 +118,7 @@ export class SemanticPageEngine implements DynamicPageEngine {
   }
 
   executeActions(request: ExecuteActionsRequest): ActionExecutionResult[] {
+    this.observer.flushPendingChanges();
     if (this.lastSnapshotUrl && this.currentUrl() !== this.lastSnapshotUrl) {
       this.invalidateSnapshot("SPA_NAVIGATION");
     }

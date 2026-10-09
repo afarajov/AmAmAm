@@ -15,16 +15,19 @@ const CLASS = {
 
 const STYLE_ATTRIBUTE = "data-contextlayer-engine-styles";
 const OVERLAY_ATTRIBUTE = "data-contextlayer-strike-overlay";
+const STRIKE_CONTAINER_CLASS = "contextlayer-engine-strike-container";
 type Effect = keyof typeof CLASS;
 
 interface EffectRecord {
   effects: Set<Effect>;
+  addedClasses: Set<Effect>;
   overlay?: HTMLElement;
-  originalPosition?: { value: string; priority: string };
+  addedStrikeContainerClass?: boolean;
 }
 
 export class ActionExecutor {
   private readonly records = new Map<Element, EffectRecord>();
+  private styleElement?: HTMLStyleElement;
 
   constructor(
     private readonly document: Document,
@@ -84,7 +87,8 @@ export class ActionExecutor {
       this.clearElement(element);
       if (id) affectedElementIds.push(id);
     }
-    this.document.querySelector(`style[${STYLE_ATTRIBUTE}]`)?.remove();
+    this.styleElement?.remove();
+    this.styleElement = undefined;
     return { type: "RESTORE_ALL", success: true, affectedElementIds, failures: [] };
   }
 
@@ -93,7 +97,7 @@ export class ActionExecutor {
       if (!("scrollIntoView" in element) || typeof element.scrollIntoView !== "function") {
         throw new Error("scrollIntoView is not supported by this document.");
       }
-      element.scrollIntoView({ behavior: "smooth", block: "center", inline: "nearest" });
+      this.scrollToElement(element);
       return;
     }
     if (type === "CLEAR_EFFECT") {
@@ -103,10 +107,16 @@ export class ActionExecutor {
 
     this.ensureStyles();
     const effect = actionToEffect(type);
-    const record = this.records.get(element) ?? { effects: new Set<Effect>() };
+    const record = this.records.get(element) ?? {
+      effects: new Set<Effect>(),
+      addedClasses: new Set<Effect>(),
+    };
     if (record.effects.has(effect)) return;
 
-    element.classList.add(CLASS[effect]);
+    if (!element.classList.contains(CLASS[effect])) {
+      element.classList.add(CLASS[effect]);
+      record.addedClasses.add(effect);
+    }
     record.effects.add(effect);
     if (effect === "strike" && shouldUseOverlay(element)) {
       this.addStrikeOverlay(element, record);
@@ -117,12 +127,9 @@ export class ActionExecutor {
   private addStrikeOverlay(element: Element, record: EffectRecord): void {
     if (!(element instanceof this.document.defaultView!.HTMLElement) || record.overlay) return;
     const style = this.document.defaultView!.getComputedStyle(element);
-    if (style.position === "static") {
-      record.originalPosition = {
-        value: element.style.getPropertyValue("position"),
-        priority: element.style.getPropertyPriority("position"),
-      };
-      element.style.setProperty("position", "relative");
+    if (style.position === "static" && !element.classList.contains(STRIKE_CONTAINER_CLASS)) {
+      element.classList.add(STRIKE_CONTAINER_CLASS);
+      record.addedStrikeContainerClass = true;
     }
 
     const overlay = this.document.createElement("span");
@@ -136,18 +143,14 @@ export class ActionExecutor {
     const record = this.records.get(element);
     if (!record) return;
 
-    for (const effect of record.effects) element.classList.remove(CLASS[effect]);
+    for (const effect of record.addedClasses) element.classList.remove(CLASS[effect]);
     record.overlay?.remove();
-    if (record.originalPosition && element instanceof this.document.defaultView!.HTMLElement) {
-      const { value, priority } = record.originalPosition;
-      if (value) element.style.setProperty("position", value, priority);
-      else element.style.removeProperty("position");
-    }
+    if (record.addedStrikeContainerClass) element.classList.remove(STRIKE_CONTAINER_CLASS);
     this.records.delete(element);
   }
 
   private ensureStyles(): void {
-    if (this.document.querySelector(`style[${STYLE_ATTRIBUTE}]`)) return;
+    if (this.styleElement?.isConnected) return;
     const style = this.document.createElement("style");
     style.setAttribute(STYLE_ATTRIBUTE, "");
     style.textContent = `
@@ -159,6 +162,7 @@ export class ActionExecutor {
       }
       .${CLASS.dim} { opacity: 0.28 !important; }
       .${CLASS.strike} { text-decoration: line-through 3px rgba(210, 40, 40, 0.85) !important; }
+      .${STRIKE_CONTAINER_CLASS} { position: relative !important; }
       .${CLASS.hidden} { display: none !important; }
       [${OVERLAY_ATTRIBUTE}] {
         position: absolute !important;
@@ -171,6 +175,34 @@ export class ActionExecutor {
       }
     `;
     (this.document.head ?? this.document.documentElement).append(style);
+    this.styleElement = style;
+  }
+
+  private scrollToElement(element: Element): void {
+    if (!(element instanceof this.document.defaultView!.HTMLElement)) {
+      element.scrollIntoView({ behavior: "smooth", block: "start", inline: "nearest" });
+      return;
+    }
+
+    const originalStyleAttribute = element.getAttribute("style");
+    const fixedHeaderOffset = getFixedHeaderOffset(this.document);
+    const currentMargin = Number.parseFloat(
+      this.document.defaultView!.getComputedStyle(element).scrollMarginTop,
+    ) || 0;
+    const temporaryMargin = Math.max(currentMargin, fixedHeaderOffset > 0 ? fixedHeaderOffset + 8 : 0);
+
+    try {
+      if (temporaryMargin > 0) {
+        element.style.setProperty("scroll-margin-top", `${temporaryMargin}px`, "important");
+      }
+      element.scrollIntoView({ behavior: "smooth", block: "start", inline: "nearest" });
+    } finally {
+      if (originalStyleAttribute !== null) {
+        element.setAttribute("style", originalStyleAttribute);
+      } else {
+        element.removeAttribute("style");
+      }
+    }
   }
 }
 
@@ -192,7 +224,25 @@ function isSafeToHide(element: Element, document: Document): boolean {
 }
 
 function shouldUseOverlay(element: Element): boolean {
-  return ["article", "section", "div", "li", "tr"].includes(element.tagName.toLowerCase());
+  return ["article", "section", "div", "li"].includes(element.tagName.toLowerCase());
+}
+
+function getFixedHeaderOffset(document: Document): number {
+  const view = document.defaultView;
+  if (!view) return 0;
+
+  let offset = 0;
+  const candidates = document.querySelectorAll(
+    "header, [role='banner'], nav, [data-fixed-header]",
+  );
+  for (const candidate of candidates) {
+    const style = view.getComputedStyle(candidate);
+    if (style.position !== "fixed" && style.position !== "sticky") continue;
+    const rect = candidate.getBoundingClientRect();
+    if (rect.height <= 0 || rect.bottom <= 0 || rect.top > 1) continue;
+    offset = Math.max(offset, rect.bottom);
+  }
+  return offset;
 }
 
 function failureResult(
