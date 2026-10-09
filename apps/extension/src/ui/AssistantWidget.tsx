@@ -2,9 +2,14 @@ import {
   AlertCircle,
   CircleCheck,
   CircleX,
+  Clock3,
+  FileText,
   LocateFixed,
+  Plus,
   RotateCcw,
-  Send
+  Send,
+  Settings,
+  X
 } from "lucide-react";
 import { FormEvent, KeyboardEvent, useEffect, useId, useRef, useState } from "react";
 
@@ -15,6 +20,7 @@ import type {
   AgentSessionProgress
 } from "../integration/agentSession";
 import { presentActionResult } from "./actionPresentation";
+import { HistoryPanel, MessageActions, SettingsPanel } from "./DemoPanels";
 import { LotusMark } from "./LotusMark";
 import type { ChatMessage, RequestStatus } from "./types";
 
@@ -112,6 +118,7 @@ export function AssistantWidget({
   modeLabel
 }: AssistantWidgetProps) {
   const [isOpen, setIsOpen] = useState(false);
+  const [view, setView] = useState<"chat" | "history" | "settings">("chat");
   const [draft, setDraft] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [status, setStatus] = useState<RequestStatus>("idle");
@@ -119,6 +126,9 @@ export function AssistantWidget({
   const [hasPageModifications, setHasPageModifications] = useState(false);
   const [activityMessage, setActivityMessage] = useState("Waiting for response…");
   const [pageNotice, setPageNotice] = useState<string | null>(null);
+  const [pageTitle, setPageTitle] = useState(
+    activationTarget.ownerDocument.title || "Current page"
+  );
   const inputId = useId();
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const messagesRef = useRef<HTMLDivElement>(null);
@@ -158,6 +168,7 @@ export function AssistantWidget({
       if (nextUrl === currentUrl) return;
 
       currentUrl = nextUrl;
+      setPageTitle(activationTarget.ownerDocument.title || "Current page");
       agentSession.invalidatePage();
       setMessages([]);
       setHasPageModifications(false);
@@ -282,6 +293,8 @@ export function AssistantWidget({
     }
   };
 
+  const suggestions = ["Summarize this page", "Key points", "Explain simply", "Translate"];
+
   return (
     <>
       {isOpen && (
@@ -296,18 +309,15 @@ export function AssistantWidget({
                 <p><span aria-hidden="true" />{modeLabel}</p>
               </div>
             </div>
-            <button
-              className="contextlayer-icon-button"
-              type="button"
-              aria-label="Reset page changes"
-              title={hasPageModifications ? "Reset page changes" : "No page changes to reset"}
-              disabled={!hasPageModifications || status === "loading"}
-              onClick={handleReset}
-            >
-              <RotateCcw aria-hidden="true" size={18} />
-            </button>
+            <div className="contextlayer-header-actions">
+              <button className="contextlayer-icon-button" type="button" aria-label="Reset page changes" title={hasPageModifications ? "Reset page changes" : "No page changes to reset"} disabled={!hasPageModifications || status === "loading"} onClick={handleReset}><Plus aria-hidden="true" size={18} /></button>
+              <button className={`contextlayer-icon-button${view === "history" ? " is-active" : ""}`} type="button" aria-label="History" title="History" onClick={() => setView(view === "history" ? "chat" : "history")}><Clock3 aria-hidden="true" size={18} /></button>
+              <button className={`contextlayer-icon-button${view === "settings" ? " is-active" : ""}`} type="button" aria-label="Settings" title="Settings" onClick={() => setView(view === "settings" ? "chat" : "settings")}><Settings aria-hidden="true" size={18} /></button>
+              <button className="contextlayer-icon-button" type="button" aria-label="Close" title="Close" onClick={() => setIsOpen(false)}><X aria-hidden="true" size={18} /></button>
+            </div>
           </header>
 
+          {view === "settings" ? <SettingsPanel /> : view === "history" ? <HistoryPanel messages={messages} /> : <>
           <div ref={messagesRef} className="contextlayer-messages" aria-live="polite">
             {pageNotice && (
               <div className="contextlayer-page-state" role="status">
@@ -377,6 +387,7 @@ export function AssistantWidget({
                       })}
                     </div>
                   )}
+                  {message.role === "assistant" && <MessageActions text={message.text} />}
                 </div>
               ))
             )}
@@ -396,6 +407,21 @@ export function AssistantWidget({
                 <p>{errorMessage}</p>
               </div>
             )}
+          </div>
+
+          <div className="contextlayer-suggestions" aria-label="Suggested prompts">
+            {suggestions.map((suggestion) => (
+              <button type="button" key={suggestion} onClick={() => {
+                setDraft(suggestion);
+                inputRef.current?.focus();
+              }}>{suggestion}</button>
+            ))}
+          </div>
+
+          <div className="contextlayer-reading" title={pageTitle}>
+            <FileText aria-hidden="true" size={12} />
+            <span>Reading:</span>
+            <strong>{pageTitle}</strong>
           </div>
 
           <form className="contextlayer-composer" onSubmit={handleSubmit}>
@@ -429,6 +455,8 @@ export function AssistantWidget({
               <Send aria-hidden="true" size={18} />
             </button>
           </form>
+          </>}
+
         </section>
       )}
 
