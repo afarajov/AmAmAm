@@ -8,6 +8,7 @@ describe("query intent policy", () => {
     ["Затемни нерелевантные блоки", ["DIM"]],
     ["Зачеркни устаревший текст", ["STRIKE"]],
     ["Скрой рекламный блок", ["HIDE"]],
+    ["Remove all Tom Fords", ["HIDE"]],
     ["Убери эффект с абзаца о рисках", ["CLEAR_EFFECT"]],
     ["Верни всё", ["RESTORE_ALL"]],
     ["Show me the paragraph about privacy", ["HIGHLIGHT", "SCROLL_TO"]],

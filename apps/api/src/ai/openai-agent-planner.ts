@@ -35,7 +35,7 @@ Element IDs are internal metadata. Never mention values such as node-00001, elem
 Every targeted action ID must also appear in references. Use approved actions only.
 RESTORE_ALL must have an empty targetElementIds array.
 Use RESTORE_ALL only when the user explicitly asks to restore, reset, or undo every ContextLayer page effect.
-Map explicit commands precisely: highlight to HIGHLIGHT, scroll or go to to SCROLL_TO, dim to DIM, strike or cross out to STRIKE, hide to HIDE, and clear a targeted visual effect to CLEAR_EFFECT.
+Map explicit commands precisely: highlight to HIGHLIGHT, scroll or go to to SCROLL_TO, dim to DIM, strike or cross out to STRIKE, hide/remove/delete page content to HIDE, and clear a targeted visual effect to CLEAR_EFFECT.
 For CLEAR_EFFECT, ground the identity of the requested target element from PAGE_CONTEXT; the element text does not need to mention an effect because ContextLayer effects are browser state, not page content. Return NOT_FOUND only when the target element itself cannot be resolved.
 When the user requests more than one operation, return every requested operation and no unrequested operations.
 If an action target is ambiguous (for example "hide this" without a resolvable referent), ask for clarification and return no references and no actions.

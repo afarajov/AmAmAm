@@ -49,7 +49,8 @@ const ACTION_PATTERNS: ReadonlyArray<{
   {
     type: "HIDE",
     patterns: [
-      /\b(?:hide|conceal)\b/iu,
+      /\b(?:hide|conceal|delete)\b/iu,
+      /\bremove\b(?!\s+(?:the\s+)?(?:(?:visual\s+)?effects?|highlight|dimming|strikethrough)\b)/iu,
       /(?:^|[^\p{L}])скр(?:ой|ойте|ыть)(?:$|[^\p{L}])/iu,
       /(?:^|[^\p{L}])gizlət[\p{L}]*/iu
     ]
@@ -72,7 +73,7 @@ const LOCATE_PATTERNS = [
 ];
 
 const AMBIGUOUS_TARGET_PATTERNS = [
-  /^(?:please\s+)?(?:highlight|dim|fade|hide|conceal|strike(?:\s+out)?|cross\s+out|scroll(?:\s+to)?|show|locate|find|clear\s+(?:the\s+)?effect(?:s)?(?:\s+(?:from|on))?|remove\s+(?:the\s+)?effect(?:s)?(?:\s+(?:from|on))?)\s+(?:this|that|it|these|those)(?:\s+(?:one|ones|element|section|paragraph|item))?[.!?]*$/iu,
+  /^(?:please\s+)?(?:highlight|dim|fade|hide|conceal|remove|delete|strike(?:\s+out)?|cross\s+out|scroll(?:\s+to)?|show|locate|find|clear\s+(?:the\s+)?effect(?:s)?(?:\s+(?:from|on))?|remove\s+(?:the\s+)?effect(?:s)?(?:\s+(?:from|on))?)\s+(?:this|that|it|these|those)(?:\s+(?:one|ones|element|section|paragraph|item))?[.!?]*$/iu,
   /^(?:пожалуйста,?\s+)?(?:подсвет\p{L}*|выдел\p{L}*|затемн\p{L}*|приглуш\p{L}*|зачерк\p{L}*|скр(?:ой|ыть|ывай)\p{L}*|прокрут\p{L}*|покаж\p{L}*|найд\p{L}*|убер\p{L}*\s+эффект\p{L}*)\s+(?:это|этот|эту|эти|его|её|их)(?:\s+(?:элемент|раздел|абзац|часть))?[.!?]*$/iu,
   /^(?:zəhmət\s+olmasa\s+)?(?:vurğula\p{L}*|gizlət\p{L}*|sürüşdür\p{L}*|göstər\p{L}*|tap\p{L}*)\s+(?:bunu|onu|bunları|onları)[.!?]*$/iu
 ];
