@@ -10,6 +10,7 @@ describe("API configuration", () => {
       jsonBodyLimit: "512kb",
       shutdownTimeoutMs: 10_000,
       openaiModel: "gpt-4.1-mini",
+      openaiEmbeddingModel: "text-embedding-3-small",
       openaiTimeoutMs: 20_000,
       corsAllowedOrigins: []
     });
@@ -22,9 +23,14 @@ describe("API configuration", () => {
   });
 
   it("loads AI settings without exposing a default credential", () => {
-    expect(loadConfig({ OPENAI_API_KEY: " secret ", OPENAI_MODEL: "gpt-test" })).toMatchObject({
+    expect(loadConfig({
+      OPENAI_API_KEY: " secret ",
+      OPENAI_MODEL: "gpt-test",
+      OPENAI_EMBEDDING_MODEL: "embedding-test"
+    })).toMatchObject({
       openaiApiKey: "secret",
-      openaiModel: "gpt-test"
+      openaiModel: "gpt-test",
+      openaiEmbeddingModel: "embedding-test"
     });
     expect(loadConfig({}).openaiApiKey).toBeUndefined();
   });

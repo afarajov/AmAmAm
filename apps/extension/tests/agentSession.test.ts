@@ -1,5 +1,12 @@
 import { createPageEngine } from "@contextlayer/page-engine";
-import type { AgentRequest, AgentResponse } from "@contextlayer/shared";
+import type {
+  ActionExecutionResult,
+  AgentRequest,
+  AgentResponse,
+  ExecuteActionsRequest,
+  PageEngine,
+  PageSnapshot
+} from "@contextlayer/shared";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -8,7 +15,10 @@ import {
 } from "../src/integration/agentSession";
 
 class HighlightFirstElementGateway implements AgentGateway {
+  readonly snapshotVersions: number[] = [];
+
   async query(request: AgentRequest): Promise<AgentResponse> {
+    this.snapshotVersions.push(request.page.snapshotVersion);
     const target = request.page.elements[0];
     if (!target) throw new Error("The test page did not produce a semantic element.");
 
@@ -20,6 +30,54 @@ class HighlightFirstElementGateway implements AgentGateway {
       references: [{ elementId: target.id, excerpt: target.text }],
       actions: [{ type: "HIGHLIGHT", targetElementIds: [target.id] }]
     };
+  }
+}
+
+class StaleOncePageEngine implements PageEngine {
+  scanCount = 0;
+  private stale = true;
+
+  constructor(
+    private readonly delegate: PageEngine,
+    private readonly document: Document
+  ) {}
+
+  scan(): PageSnapshot {
+    this.scanCount += 1;
+    return this.delegate.scan();
+  }
+
+  executeActions(request: ExecuteActionsRequest): ActionExecutionResult[] {
+    if (this.stale) {
+      this.stale = false;
+      const paragraph = this.document.querySelector("p");
+      if (paragraph) paragraph.textContent = `${paragraph.textContent} Updated.`;
+      return request.actions.map((action) => ({
+        type: action.type,
+        success: false,
+        affectedElementIds: [],
+        failures: [{
+          code: "STALE_SNAPSHOT",
+          message: "The page changed before execution."
+        }]
+      }));
+    }
+    return this.delegate.executeActions(request);
+  }
+}
+
+class ScanCountingPageEngine implements PageEngine {
+  scanCount = 0;
+
+  constructor(private readonly delegate: PageEngine) {}
+
+  scan(): PageSnapshot {
+    this.scanCount += 1;
+    return this.delegate.scan();
+  }
+
+  executeActions(request: ExecuteActionsRequest): ActionExecutionResult[] {
+    return this.delegate.executeActions(request);
   }
 }
 
@@ -77,13 +135,13 @@ describe("AgentSession with the semantic page engine", () => {
     expect(result.hasPageModifications).toBe(true);
     expect(paragraph.classList).toContain("contextlayer-engine-highlight");
 
-    const referenceResult = session.scrollToReference(
+    const referenceResult = await session.scrollToReference(
       result.response.references![0]!.elementId
     );
-    expect(referenceResult.executionResults[0]).toMatchObject({
-      type: "SCROLL_TO",
-      success: true
-    });
+    expect(referenceResult.executionResults).toMatchObject([
+      { type: "HIGHLIGHT", success: true },
+      { type: "SCROLL_TO", success: true }
+    ]);
     expect(paragraph.scrollIntoView).toHaveBeenCalledOnce();
     expect(referenceResult.hasPageModifications).toBe(true);
 
@@ -129,5 +187,56 @@ describe("AgentSession with the semantic page engine", () => {
     expect(document.querySelector("p")?.classList).toContain(
       "contextlayer-engine-highlight"
     );
+  });
+
+  it("scans for every request while preserving an unchanged snapshot version", async () => {
+    const gateway = new HighlightFirstElementGateway();
+    const pageEngine = new ScanCountingPageEngine(createPageEngine(document));
+    const session = createAgentSession(pageEngine, gateway);
+
+    await session.submit("First question");
+    await session.submit("Second question");
+
+    expect(pageEngine.scanCount).toBe(2);
+    expect(gateway.snapshotVersions).toEqual([1, 1]);
+  });
+
+  it("rescans and retries once after a stale snapshot", async () => {
+    const pageEngine = new StaleOncePageEngine(createPageEngine(document), document);
+    const gateway = new HighlightFirstElementGateway();
+    const session = createAgentSession(pageEngine, gateway);
+
+    const result = await session.submit("Recover the action");
+
+    expect(pageEngine.scanCount).toBe(2);
+    expect(gateway.snapshotVersions).toEqual([1, 2]);
+    expect(result.recoveredFromStale).toBe(true);
+    expect(result.executionResults[0]).toMatchObject({
+      type: "HIGHLIGHT",
+      success: true
+    });
+  });
+
+  it("rescans a dynamic page before navigating to an existing reference", async () => {
+    const paragraph = document.querySelector("p")!;
+    paragraph.scrollIntoView = vi.fn();
+    const pageEngine = createPageEngine(document);
+    const session = createAgentSession(pageEngine, new HighlightFirstElementGateway());
+    const turn = await session.submit("Find the privacy controls");
+
+    const liveRegion = document.createElement("span");
+    liveRegion.textContent = "A live notification unrelated to the referenced paragraph.";
+    document.body.append(liveRegion);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const result = await session.scrollToReference(
+      turn.response.references![0]!.elementId
+    );
+
+    expect(result.executionResults).toMatchObject([
+      { type: "HIGHLIGHT", success: true },
+      { type: "SCROLL_TO", success: true }
+    ]);
+    expect(paragraph.scrollIntoView).toHaveBeenCalledOnce();
   });
 });

@@ -93,6 +93,71 @@ describe("runtime contracts", () => {
     expect(plan.references[0]?.excerpt).toBe("Privacy is an important limitation");
   });
 
+  it("compacts duplicate parent and child references to the specific child", () => {
+    const parent = {
+      id: "node-00001",
+      kind: "section" as const,
+      text: "Account settings. Privacy is an important limitation of the system. Footer links.",
+      tagName: "SECTION",
+      visible: true
+    };
+    const child = {
+      id: "node-00002",
+      kind: "paragraph" as const,
+      text: "Privacy is an important limitation of the system.",
+      tagName: "P",
+      parentId: parent.id,
+      visible: true
+    };
+    const plan = validateGroundedPlan({
+      grounding: "SUPPORTED",
+      message: "Found it.",
+      references: [
+        { elementId: parent.id, excerpt: parent.text },
+        { elementId: child.id, excerpt: child.text },
+        { elementId: child.id, excerpt: child.text }
+      ],
+      actions: [{
+        type: "HIGHLIGHT",
+        targetElementIds: [parent.id, child.id, child.id],
+        explanation: "Highlight evidence"
+      }],
+      limitations: []
+    }, [parent, child]);
+
+    expect(plan.references).toEqual([{ elementId: child.id, excerpt: child.text }]);
+    expect(plan.actions[0]?.targetElementIds).toEqual([child.id]);
+  });
+
+  it("bounds distinct grounded references while preserving action targets", () => {
+    const candidates = Array.from({ length: 7 }, (_, index) => ({
+      id: `node-${String(index + 1).padStart(5, "0")}`,
+      kind: "paragraph" as const,
+      text: `Independent supporting fact number ${index + 1} with unique details.`,
+      tagName: "P",
+      visible: true
+    }));
+    const actionTarget = candidates[6]!;
+    const plan = validateGroundedPlan({
+      grounding: "SUPPORTED",
+      message: "Found several facts.",
+      references: candidates.map((element) => ({
+        elementId: element.id,
+        excerpt: element.text
+      })),
+      actions: [{
+        type: "HIGHLIGHT",
+        targetElementIds: [actionTarget.id],
+        explanation: "Highlight the requested fact"
+      }],
+      limitations: []
+    }, candidates);
+
+    expect(plan.references).toHaveLength(5);
+    expect(plan.references[0]?.elementId).toBe(actionTarget.id);
+    expect(plan.actions[0]?.targetElementIds).toEqual([actionTarget.id]);
+  });
+
   it("enforces the discriminated action contract", () => {
     expect(agentActionSchema.safeParse({ type: "RESTORE_ALL" }).success).toBe(true);
     expect(agentActionSchema.safeParse({ type: "RESTORE_ALL", targetElementIds: ["node-00001"] }).success).toBe(false);

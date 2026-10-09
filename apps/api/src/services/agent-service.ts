@@ -1,5 +1,6 @@
 import type { AgentRequest, AgentResponse } from "@contextlayer/shared";
 import { HttpError } from "../errors/api-error.js";
+import type { SemanticElement } from "@contextlayer/shared";
 import { selectCandidateElements } from "../retrieval/select-candidates.js";
 import type { AgentPlan, AgentPlanner } from "../ai/agent-planner.js";
 import { validateGroundedPlan } from "../validation/grounding.js";
@@ -9,6 +10,15 @@ export interface AgentService {
   query(request: AgentRequest): Promise<AgentResponse>;
 }
 
+export type CandidateSelector = (
+  query: string,
+  elements: SemanticElement[]
+) => Promise<SemanticElement[]>;
+
+const lexicalCandidateSelector: CandidateSelector = async (query, elements) =>
+  selectCandidateElements(query, elements);
+const MAX_GROUNDED_PLAN_ATTEMPTS = 2;
+
 /** Production-safe default: never pretends that AI reasoning happened. */
 export class UnavailableAgentService implements AgentService {
   async query(_request: AgentRequest): Promise<AgentResponse> {
@@ -17,30 +27,48 @@ export class UnavailableAgentService implements AgentService {
 }
 
 export class PlanningAgentService implements AgentService {
-  constructor(private readonly planner: AgentPlanner) {}
+  constructor(
+    private readonly planner: AgentPlanner,
+    private readonly candidateSelector: CandidateSelector = lexicalCandidateSelector
+  ) {}
 
   async query(request: AgentRequest): Promise<AgentResponse> {
-    const candidates = selectCandidateElements(request.query, request.page.elements);
-    const rawPlan: AgentPlan = await this.planner.plan({
+    const candidates = await this.candidateSelector(request.query, request.page.elements);
+    const planInput = {
       query: request.query,
       pageTitle: request.page.title,
       pageUrl: request.page.url,
       candidates
-    });
-    const plan = validateGroundedPlan(rawPlan, candidates);
+    };
+    let plan: AgentPlan | undefined;
+    let validationError: unknown;
+    for (let attempt = 0; attempt < MAX_GROUNDED_PLAN_ATTEMPTS; attempt += 1) {
+      const rawPlan = await this.planner.plan(planInput);
+      try {
+        validateUserFacingMessage(rawPlan.message);
+        plan = validateGroundedPlan(rawPlan, candidates);
+        break;
+      } catch (error) {
+        validationError = error;
+        if (!(error instanceof HttpError) || error.code !== "MODEL_ERROR") throw error;
+      }
+    }
+    if (plan === undefined) throw validationError;
+    const allowsBrowserActions = isVisualOperationQuery(request.query);
+    const responseActions = allowsBrowserActions ? plan.actions : [];
 
     return {
       requestId: request.requestId,
       pageId: request.page.pageId,
       snapshotVersion: request.page.snapshotVersion,
-      message: responseMessage(request.query, plan),
+      message: responseMessage(request.query, plan, responseActions.length > 0),
       references: plan.references.map(({ elementId, excerpt }) => ({
         elementId,
         // Grounding is already verified, so a prefix remains an exact quote
         // while keeping the public response inside its contract limit.
         excerpt: excerpt.slice(0, 500)
       })),
-      actions: plan.actions.map((action) => action.type === "RESTORE_ALL"
+      actions: responseActions.map((action) => action.type === "RESTORE_ALL"
         ? { type: "RESTORE_ALL", explanation: action.explanation }
         : {
             type: action.type,
@@ -52,10 +80,27 @@ export class PlanningAgentService implements AgentService {
   }
 }
 
-function responseMessage(query: string, plan: AgentPlan): string {
+function validateUserFacingMessage(message: string): void {
+  if (/\bnode-\d{5}\b/iu.test(message) || /\belementId\b/iu.test(message)) {
+    throw new HttpError(502, "MODEL_ERROR", "The AI pipeline exposed internal element metadata.");
+  }
+}
+
+function responseMessage(query: string, plan: AgentPlan, hasRequestedActions: boolean): string {
   if (plan.grounding === "NOT_FOUND") return notFoundMessage(query);
-  if (plan.actions.length > 0) return proposedActionMessage(query);
+  if (hasRequestedActions) return proposedActionMessage(query);
   return plan.message;
+}
+
+const VISUAL_OPERATION_PATTERNS = [
+  /\b(?:show|highlight|dim|strike|hide|scroll|locate|find)\b/iu,
+  /\b(?:go|take)\s+(?:me\s+)?to\b/iu,
+  /(?:^|[^\p{L}])(?:покаж|подсвет|выдел|скро|зачерк|затемн|прокрут|перейд|найд)[\p{L}]*/iu,
+  /(?:^|[^\p{L}])(?:göstər|vurğula|gizlət|sürüşdür|keç|tap)[\p{L}]*/iu,
+];
+
+export function isVisualOperationQuery(query: string): boolean {
+  return VISUAL_OPERATION_PATTERNS.some((pattern) => pattern.test(query));
 }
 
 function languageOf(query: string): "ru" | "az" | "en" {

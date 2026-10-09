@@ -8,6 +8,7 @@ export interface ApiConfig {
   shutdownTimeoutMs: number;
   openaiApiKey?: string;
   openaiModel: string;
+  openaiEmbeddingModel: string;
   openaiTimeoutMs: number;
   corsAllowedOrigins: string[];
 }
@@ -37,6 +38,7 @@ export function loadConfig(environment: NodeJS.ProcessEnv = process.env): ApiCon
     shutdownTimeoutMs: positiveInteger("SHUTDOWN_TIMEOUT_MS", environment.SHUTDOWN_TIMEOUT_MS, 10_000),
     ...(openaiApiKey ? { openaiApiKey } : {}),
     openaiModel: environment.OPENAI_MODEL?.trim() || "gpt-4.1-mini",
+    openaiEmbeddingModel: environment.OPENAI_EMBEDDING_MODEL?.trim() || "text-embedding-3-small",
     openaiTimeoutMs: positiveInteger("OPENAI_TIMEOUT_MS", environment.OPENAI_TIMEOUT_MS, 20_000),
     corsAllowedOrigins: (environment.CORS_ALLOWED_ORIGINS ?? "")
       .split(",")
