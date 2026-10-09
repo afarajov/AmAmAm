@@ -1,5 +1,6 @@
 import { createRoot } from "react-dom/client";
 
+import { createMockSession } from "../mocks/createMockSession";
 import { AssistantWidget } from "../ui/AssistantWidget";
 import styles from "./styles.css?inline";
 
@@ -26,7 +27,11 @@ function mountExtensionShell(): void {
   document.documentElement.append(host);
 
   createRoot(appRoot).render(
-    <AssistantWidget activationTarget={host} activationEvent={ACTIVATE_EVENT} />
+    <AssistantWidget
+      activationTarget={host}
+      activationEvent={ACTIVATE_EVENT}
+      agentSession={createMockSession(document)}
+    />
   );
 }
 

@@ -5,8 +5,16 @@ Manifest V3 extension that injects a Shadow DOM launcher after a user clicks
 the toolbar action. The panel supports open/close behavior, message entry,
 history presentation, loading/error states and responsive layouts.
 
-The backend and page engine are not connected yet. Submitting a message shows
-an explicit unavailable state instead of fabricating an assistant response.
+The backend and page engine are not connected yet. A clearly labelled mock mode
+exercises the complete client flow with contract-compatible `PageEngine`,
+`AgentRequest` and `AgentResponse` values:
+
+```text
+message -> mock snapshot -> mock agent response -> chat history
+```
+
+The replacement boundary is `src/integration/agentSession.ts`. Real adapters
+can replace `src/mocks` without changing the chat component.
 
 ## Build and load
 

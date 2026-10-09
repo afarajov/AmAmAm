@@ -140,7 +140,7 @@ button {
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: #16a34a;
+  background: #f59e0b;
 }
 
 .contextlayer-header-actions {
@@ -315,6 +315,11 @@ button {
 
 .contextlayer-composer textarea::placeholder {
   color: #98a2b3;
+}
+
+.contextlayer-composer textarea:disabled {
+  cursor: wait;
+  background: #f9fafb;
 }
 
 .contextlayer-send-button {

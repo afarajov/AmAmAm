@@ -8,34 +8,36 @@ import {
 } from "lucide-react";
 import { FormEvent, KeyboardEvent, useEffect, useId, useRef, useState } from "react";
 
+import type { AgentSession } from "../integration/agentSession";
 import type { ChatMessage, RequestStatus } from "./types";
 
 interface AssistantWidgetProps {
   activationTarget: HTMLElement;
   activationEvent: string;
+  agentSession: AgentSession;
 }
 
-const UNAVAILABLE_MESSAGE =
-  "The agent connection is not configured yet. Your message was not sent.";
-
-function createMessage(text: string): ChatMessage {
+function createMessage(text: string, role: ChatMessage["role"]): ChatMessage {
   return {
     id: crypto.randomUUID(),
-    role: "user",
+    role,
     text
   };
 }
 
 export function AssistantWidget({
   activationTarget,
-  activationEvent
+  activationEvent,
+  agentSession
 }: AssistantWidgetProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [draft, setDraft] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [status, setStatus] = useState<RequestStatus>("idle");
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const inputId = useId();
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const messagesRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const openPanel = () => setIsOpen(true);
@@ -48,6 +50,11 @@ export function AssistantWidget({
   }, [isOpen]);
 
   useEffect(() => {
+    const container = messagesRef.current;
+    if (container) container.scrollTop = container.scrollHeight;
+  }, [messages, status]);
+
+  useEffect(() => {
     const closeOnEscape = (event: globalThis.KeyboardEvent) => {
       if (event.key === "Escape") setIsOpen(false);
     };
@@ -56,24 +63,39 @@ export function AssistantWidget({
     return () => activationTarget.ownerDocument.removeEventListener("keydown", closeOnEscape);
   }, [activationTarget]);
 
-  const submitMessage = () => {
+  const submitMessage = async () => {
     const query = draft.trim();
     if (!query || status === "loading") return;
 
-    setMessages((current) => [...current, createMessage(query)]);
+    setMessages((current) => [...current, createMessage(query, "user")]);
     setDraft("");
-    setStatus("error");
+    setErrorMessage(null);
+    setStatus("loading");
+
+    try {
+      const { response } = await agentSession.submit(query);
+      setMessages((current) => [
+        ...current,
+        createMessage(response.message, "assistant")
+      ]);
+      setStatus("idle");
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error ? error.message : "The agent request failed unexpectedly."
+      );
+      setStatus("error");
+    }
   };
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    submitMessage();
+    void submitMessage();
   };
 
   const handleInputKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
-      submitMessage();
+      void submitMessage();
     }
   };
 
@@ -88,7 +110,7 @@ export function AssistantWidget({
               </span>
               <div>
                 <h1>ContextLayer</h1>
-                <p><span aria-hidden="true" />Page session</p>
+                <p><span aria-hidden="true" />Mock mode</p>
               </div>
             </div>
             <div className="contextlayer-header-actions">
@@ -113,7 +135,7 @@ export function AssistantWidget({
             </div>
           </header>
 
-          <div className="contextlayer-messages" aria-live="polite">
+          <div ref={messagesRef} className="contextlayer-messages" aria-live="polite">
             {messages.length === 0 ? (
               <div className="contextlayer-empty-state">
                 <MessageCircle aria-hidden="true" size={28} strokeWidth={1.7} />
@@ -138,10 +160,10 @@ export function AssistantWidget({
               </div>
             )}
 
-            {status === "error" && (
+            {status === "error" && errorMessage && (
               <div className="contextlayer-error" role="alert">
                 <AlertCircle aria-hidden="true" size={17} />
-                <p>{UNAVAILABLE_MESSAGE}</p>
+                <p>{errorMessage}</p>
               </div>
             )}
           </div>
@@ -157,9 +179,13 @@ export function AssistantWidget({
               maxLength={2000}
               value={draft}
               placeholder="Message ContextLayer"
+              disabled={status === "loading"}
               onChange={(event) => {
                 setDraft(event.target.value);
-                if (status === "error") setStatus("idle");
+                if (status === "error") {
+                  setStatus("idle");
+                  setErrorMessage(null);
+                }
               }}
               onKeyDown={handleInputKeyDown}
             />
