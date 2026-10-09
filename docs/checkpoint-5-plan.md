@@ -122,6 +122,7 @@ npm ci
 npm run check
 npm run test:e2e --workspace @contextlayer/extension
 npm run build --workspace @contextlayer/extension
+npm run release --workspace @contextlayer/extension
 ```
 
 Then run a real Chrome test with the actual backend and a valid API key:
