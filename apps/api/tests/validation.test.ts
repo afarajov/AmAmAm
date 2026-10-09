@@ -129,6 +129,49 @@ describe("runtime contracts", () => {
     expect(plan.actions[0]?.targetElementIds).toEqual([child.id]);
   });
 
+  it("merges duplicate actions and target IDs into one bounded action", () => {
+    const plan = validateGroundedPlan({
+      grounding: "SUPPORTED",
+      message: "Found it.",
+      references: [{
+        elementId: "node-00001",
+        excerpt: "Privacy is an important limitation"
+      }],
+      actions: [
+        {
+          type: "HIGHLIGHT",
+          targetElementIds: ["node-00001", "node-00001"],
+          explanation: "First"
+        },
+        {
+          type: "HIGHLIGHT",
+          targetElementIds: ["node-00001"],
+          explanation: "Duplicate"
+        }
+      ],
+      limitations: []
+    }, request.page.elements);
+
+    expect(plan.actions).toEqual([{
+      type: "HIGHLIGHT",
+      targetElementIds: ["node-00001"],
+      explanation: "First"
+    }]);
+  });
+
+  it("requires exactly one target-free RESTORE_ALL for NOT_APPLICABLE", () => {
+    expect(() => validateGroundedPlan({
+      grounding: "NOT_APPLICABLE",
+      message: "Reset.",
+      references: [],
+      actions: [
+        { type: "RESTORE_ALL", targetElementIds: [], explanation: "First" },
+        { type: "RESTORE_ALL", targetElementIds: [], explanation: "Duplicate" }
+      ],
+      limitations: []
+    }, request.page.elements)).toThrowError(expect.objectContaining({ code: "MODEL_ERROR" }));
+  });
+
   it("bounds distinct grounded references while preserving action targets", () => {
     const candidates = Array.from({ length: 7 }, (_, index) => ({
       id: `node-${String(index + 1).padStart(5, "0")}`,
