@@ -37,7 +37,10 @@ class StaleOncePageEngine implements PageEngine {
   scanCount = 0;
   private stale = true;
 
-  constructor(private readonly delegate: PageEngine) {}
+  constructor(
+    private readonly delegate: PageEngine,
+    private readonly document: Document
+  ) {}
 
   scan(): PageSnapshot {
     this.scanCount += 1;
@@ -47,6 +50,8 @@ class StaleOncePageEngine implements PageEngine {
   executeActions(request: ExecuteActionsRequest): ActionExecutionResult[] {
     if (this.stale) {
       this.stale = false;
+      const paragraph = this.document.querySelector("p");
+      if (paragraph) paragraph.textContent = `${paragraph.textContent} Updated.`;
       return request.actions.map((action) => ({
         type: action.type,
         success: false,
@@ -57,6 +62,21 @@ class StaleOncePageEngine implements PageEngine {
         }]
       }));
     }
+    return this.delegate.executeActions(request);
+  }
+}
+
+class ScanCountingPageEngine implements PageEngine {
+  scanCount = 0;
+
+  constructor(private readonly delegate: PageEngine) {}
+
+  scan(): PageSnapshot {
+    this.scanCount += 1;
+    return this.delegate.scan();
+  }
+
+  executeActions(request: ExecuteActionsRequest): ActionExecutionResult[] {
     return this.delegate.executeActions(request);
   }
 }
@@ -169,18 +189,20 @@ describe("AgentSession with the semantic page engine", () => {
     );
   });
 
-  it("creates a fresh snapshot for every repeated request", async () => {
+  it("scans for every request while preserving an unchanged snapshot version", async () => {
     const gateway = new HighlightFirstElementGateway();
-    const session = createAgentSession(createPageEngine(document), gateway);
+    const pageEngine = new ScanCountingPageEngine(createPageEngine(document));
+    const session = createAgentSession(pageEngine, gateway);
 
     await session.submit("First question");
     await session.submit("Second question");
 
-    expect(gateway.snapshotVersions).toEqual([1, 2]);
+    expect(pageEngine.scanCount).toBe(2);
+    expect(gateway.snapshotVersions).toEqual([1, 1]);
   });
 
   it("rescans and retries once after a stale snapshot", async () => {
-    const pageEngine = new StaleOncePageEngine(createPageEngine(document));
+    const pageEngine = new StaleOncePageEngine(createPageEngine(document), document);
     const gateway = new HighlightFirstElementGateway();
     const session = createAgentSession(pageEngine, gateway);
 
