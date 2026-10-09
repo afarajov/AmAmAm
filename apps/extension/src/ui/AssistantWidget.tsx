@@ -16,6 +16,7 @@ import type {
   AgentSession,
   AgentSessionProgress
 } from "../integration/agentSession";
+import { presentActionResult } from "./actionPresentation";
 import type { ChatMessage, RequestStatus } from "./types";
 
 interface AssistantWidgetProps {
@@ -48,6 +49,11 @@ function readableError(error: unknown): string {
       return "The AI backend took too long to respond. Try again.";
     case "RATE_LIMITED":
       return "The AI backend is busy. Wait a moment and try again.";
+    case "INVALID_RESPONSE":
+      return "The AI backend returned an invalid response. No page action was run.";
+    case "MODEL_ERROR":
+    case "INTERNAL_ERROR":
+      return "The AI backend could not prepare the request. No page action was run.";
     default:
       return error instanceof Error ? error.message : "The agent request failed unexpectedly.";
   }
@@ -117,6 +123,7 @@ export function AssistantWidget({
   const inputId = useId();
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const messagesRef = useRef<HTMLDivElement>(null);
+  const requestInFlightRef = useRef(false);
 
   useEffect(() => {
     const togglePanel = () => setIsOpen((current) => !current);
@@ -173,7 +180,8 @@ export function AssistantWidget({
 
   const submitMessage = async () => {
     const query = draft.trim();
-    if (!query || status === "loading") return;
+    if (!query || requestInFlightRef.current) return;
+    requestInFlightRef.current = true;
 
     setMessages((current) => [...current, createMessage(query, "user")]);
     setDraft("");
@@ -211,6 +219,8 @@ export function AssistantWidget({
       }
       setErrorMessage(readableError(error));
       setStatus("error");
+    } finally {
+      requestInFlightRef.current = false;
     }
   };
 
@@ -346,31 +356,26 @@ export function AssistantWidget({
 
                   {message.executionResults && message.executionResults.length > 0 && (
                     <div className="contextlayer-results" aria-label="Action results">
-                      {message.executionResults.map((result, index) => (
-                        <div
-                          className={`contextlayer-result contextlayer-result--${result.success ? "success" : "failure"}`}
-                          key={`${result.type}-${index}`}
-                        >
-                          {result.success ? (
-                            <CircleCheck aria-hidden="true" size={14} />
-                          ) : (
-                            <CircleX aria-hidden="true" size={14} />
-                          )}
-                          <div>
-                            <strong>{result.type.replaceAll("_", " ")}</strong>
-                            <span>
-                              {result.success
-                                ? `${result.affectedElementIds.length} element${result.affectedElementIds.length === 1 ? "" : "s"} affected`
-                                : [
-                                    result.affectedElementIds.length > 0
-                                      ? `${result.affectedElementIds.length} element${result.affectedElementIds.length === 1 ? "" : "s"} affected.`
-                                      : "",
-                                    result.failures.map((failure) => failure.message).join(" ")
-                                  ].filter(Boolean).join(" ")}
-                            </span>
+                      {message.executionResults.map((result, index) => {
+                        const presentation = presentActionResult(result);
+                        return (
+                          <div
+                            className={`contextlayer-result contextlayer-result--${presentation.tone}`}
+                            key={`${result.type}-${index}`}
+                          >
+                            {presentation.tone === "success" ? (
+                              <CircleCheck aria-hidden="true" size={14} />
+                            ) : (
+                              <CircleX aria-hidden="true" size={14} />
+                            )}
+                            <div>
+                              <strong>{presentation.label}</strong>
+                              <span>{presentation.summary}</span>
+                              {presentation.detail && <span>{presentation.detail}</span>}
+                            </div>
                           </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
                 </div>

@@ -352,6 +352,11 @@ button {
   color: #22c55e;
 }
 
+.contextlayer-result--partial > svg,
+.contextlayer-result--partial strong {
+  color: #fbbf24;
+}
+
 .contextlayer-result--failure > svg,
 .contextlayer-result--failure strong {
   color: #f87171;
