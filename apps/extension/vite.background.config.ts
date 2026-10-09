@@ -1,6 +1,9 @@
 import { defineConfig, loadEnv, type Plugin } from "vite";
+import { readFileSync } from "node:fs";
 
 import { normalizeApiOrigin } from "./build/apiOrigin.ts";
+
+const ICON_SIZES = [16, 32, 48, 128] as const;
 
 function manifestPlugin(mode: string, apiOrigin: string): Plugin {
   const manifest = {
@@ -16,14 +19,23 @@ function manifestPlugin(mode: string, apiOrigin: string): Plugin {
       service_worker: "background.js",
       type: "module"
     },
+    icons: Object.fromEntries(ICON_SIZES.map((size) => [size, `icons/icon${size}.png`])),
     action: {
-      default_title: "Activate ContextLayer"
+      default_title: "Activate ContextLayer",
+      default_icon: Object.fromEntries(ICON_SIZES.map((size) => [size, `icons/icon${size}.png`]))
     }
   };
 
   return {
     name: "contextlayer-manifest",
     generateBundle() {
+      for (const size of ICON_SIZES) {
+        this.emitFile({
+          type: "asset",
+          fileName: `icons/icon${size}.png`,
+          source: readFileSync(new URL(`./assets/icon${size}.png`, import.meta.url))
+        });
+      }
       this.emitFile({
         type: "asset",
         fileName: "manifest.json",
