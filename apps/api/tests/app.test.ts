@@ -26,7 +26,14 @@ const agentRequest: AgentRequest = {
 };
 
 function appWith(agentService: AgentService) {
-  return createApp({ config: { jsonBodyLimit: "32kb" }, logger, agentService });
+  return createApp({
+    config: {
+      jsonBodyLimit: "32kb",
+      corsAllowedOrigins: ["chrome-extension://contextlayer-test"]
+    },
+    logger,
+    agentService
+  });
 }
 
 describe("API foundation", () => {
@@ -36,6 +43,28 @@ describe("API foundation", () => {
     expect(response.body).toEqual({ status: "ok", service: "contextlayer-api" });
     expect(response.headers["x-powered-by"]).toBeUndefined();
     expect(response.headers["x-request-id"]).toMatch(/^[0-9a-f-]{36}$/);
+  });
+
+  it("answers an allowed extension CORS preflight", async () => {
+    const response = await request(appWith(new UnavailableAgentService()))
+      .options("/api/agent/query")
+      .set("Origin", "chrome-extension://contextlayer-test")
+      .set("Access-Control-Request-Method", "POST")
+      .set("Access-Control-Request-Headers", "content-type,x-request-id");
+
+    expect(response.status).toBe(204);
+    expect(response.headers["access-control-allow-origin"]).toBe("chrome-extension://contextlayer-test");
+    expect(response.headers["access-control-allow-headers"]).toContain("x-request-id");
+  });
+
+  it("rejects a CORS preflight from an unlisted origin", async () => {
+    const response = await request(appWith(new UnavailableAgentService()))
+      .options("/api/agent/query")
+      .set("Origin", "https://untrusted.example")
+      .set("Access-Control-Request-Method", "POST");
+
+    expect(response.status).toBe(403);
+    expect(response.headers["access-control-allow-origin"]).toBeUndefined();
   });
 
   it("forwards an AgentRequest to the injected service", async () => {

@@ -21,10 +21,20 @@ async function showActivationError(tabId: number, message: string): Promise<void
   ]);
 }
 
+async function showUnsupportedPage(tabId: number): Promise<void> {
+  await Promise.all([
+    chrome.action.setBadgeText({ tabId, text: "" }),
+    chrome.action.setTitle({
+      tabId,
+      title: "Open a regular HTTP(S) webpage to use ContextLayer"
+    })
+  ]);
+}
+
 chrome.action.onClicked.addListener(async (tab) => {
   if (tab.id === undefined || !isSupportedPage(tab.url)) {
     if (tab.id !== undefined) {
-      await showActivationError(tab.id, "ContextLayer cannot run on this page.");
+      await showUnsupportedPage(tab.id);
     }
     return;
   }

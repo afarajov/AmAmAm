@@ -3,11 +3,17 @@ import { createServer } from "node:http";
 import { createApp } from "./app.js";
 import { loadConfig } from "./config/env.js";
 import { createLogger } from "./logging/logger.js";
-import { UnavailableAgentService } from "./services/agent-service.js";
+import { PlanningAgentService, UnavailableAgentService } from "./services/agent-service.js";
+import { OpenAIResponsesPlanner } from "./ai/openai-agent-planner.js";
 
 const config = loadConfig();
 const logger = createLogger(config.logLevel);
-const app = createApp({ config, logger, agentService: new UnavailableAgentService() });
+const agentService = config.openaiApiKey
+  ? new PlanningAgentService(
+      new OpenAIResponsesPlanner(config.openaiApiKey, config.openaiModel, config.openaiTimeoutMs)
+    )
+  : new UnavailableAgentService();
+const app = createApp({ config, logger, agentService });
 const server = createServer(app);
 
 server.listen(config.port, config.host, () => {

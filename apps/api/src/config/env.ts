@@ -6,6 +6,10 @@ export interface ApiConfig {
   logLevel: LogLevel;
   jsonBodyLimit: string;
   shutdownTimeoutMs: number;
+  openaiApiKey?: string;
+  openaiModel: string;
+  openaiTimeoutMs: number;
+  corsAllowedOrigins: string[];
 }
 
 function positiveInteger(name: string, value: string | undefined, fallback: number): number {
@@ -24,11 +28,19 @@ function logLevel(value: string | undefined): LogLevel {
 }
 
 export function loadConfig(environment: NodeJS.ProcessEnv = process.env): ApiConfig {
+  const openaiApiKey = environment.OPENAI_API_KEY?.trim();
   return {
     host: environment.HOST?.trim() || "127.0.0.1",
     port: positiveInteger("PORT", environment.PORT, 8787),
     logLevel: logLevel(environment.LOG_LEVEL),
     jsonBodyLimit: environment.JSON_BODY_LIMIT?.trim() || "512kb",
-    shutdownTimeoutMs: positiveInteger("SHUTDOWN_TIMEOUT_MS", environment.SHUTDOWN_TIMEOUT_MS, 10_000)
+    shutdownTimeoutMs: positiveInteger("SHUTDOWN_TIMEOUT_MS", environment.SHUTDOWN_TIMEOUT_MS, 10_000),
+    ...(openaiApiKey ? { openaiApiKey } : {}),
+    openaiModel: environment.OPENAI_MODEL?.trim() || "gpt-4.1-mini",
+    openaiTimeoutMs: positiveInteger("OPENAI_TIMEOUT_MS", environment.OPENAI_TIMEOUT_MS, 20_000),
+    corsAllowedOrigins: (environment.CORS_ALLOWED_ORIGINS ?? "")
+      .split(",")
+      .map((origin) => origin.trim())
+      .filter(Boolean)
   };
 }

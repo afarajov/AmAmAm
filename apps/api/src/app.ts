@@ -6,9 +6,10 @@ import type { Logger } from "./logging/logger.js";
 import { agentQueryRouter } from "./routes/agent-query.js";
 import { healthRouter } from "./routes/health.js";
 import type { AgentService } from "./services/agent-service.js";
+import { cors } from "./middleware/cors.js";
 
 export interface AppDependencies {
-  config: Pick<ApiConfig, "jsonBodyLimit">;
+  config: Pick<ApiConfig, "jsonBodyLimit" | "corsAllowedOrigins">;
   logger: Logger;
   agentService: AgentService;
 }
@@ -16,6 +17,7 @@ export interface AppDependencies {
 export function createApp({ config, logger, agentService }: AppDependencies): Express {
   const app = express();
   app.disable("x-powered-by");
+  app.use(cors(config.corsAllowedOrigins));
   app.use(express.json({ limit: config.jsonBodyLimit }));
   app.use(requestContext(logger));
   app.use(healthRouter());

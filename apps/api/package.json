@@ -13,6 +13,7 @@
     "@contextlayer/shared": "0.1.0",
     "dotenv": "^17.2.3",
     "express": "^5.1.0",
+    "openai": "^7.31.0",
     "zod": "^4.6.5"
   },
   "devDependencies": {
