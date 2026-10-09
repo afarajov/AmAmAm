@@ -150,7 +150,7 @@ export function AssistantWidget({
   const [hasPageModifications, setHasPageModifications] = useState(false);
   const [activityMessage, setActivityMessage] = useState("Waiting for response…");
   const [pageNotice, setPageNotice] = useState<string | null>(null);
-  const [connectionNotice, setConnectionNotice] = useState<string | null>(null);
+  const [, setConnectionNotice] = useState<string | null>(null);
   const [pageTitle, setPageTitle] = useState(
     activationTarget.ownerDocument.title || "Current page"
   );
@@ -444,12 +444,6 @@ export function AssistantWidget({
 
           {view === "settings" ? <SettingsPanel settings={settings} onChange={handleSettingsChange} onExport={handleExport} onClearChat={handleClearCurrentChat} onClearHistory={handleClearHistory} /> : view === "history" ? <HistoryPanel sessions={history} activeId={sessionId} onOpen={handleOpenSession} onDelete={handleDeleteSession} onClear={handleClearHistory} /> : <>
           <div ref={messagesRef} className="contextlayer-messages" aria-live="polite">
-            {connectionNotice && (
-              <div className="contextlayer-error" role="status">
-                <AlertCircle aria-hidden="true" size={17} />
-                <p>{connectionNotice}</p>
-              </div>
-            )}
             {pageNotice && (
               <div className="contextlayer-page-state" role="status">
                 <RotateCcw aria-hidden="true" size={15} />
