@@ -35,6 +35,8 @@ Every targeted action ID must also appear in references. Use approved actions on
 RESTORE_ALL must have an empty targetElementIds array.
 You only propose actions. Never say an action has completed, succeeded, highlighted, hidden, scrolled, or otherwise changed the page.
 Treat requests to show, display, find, locate, or take the user to a passage as visual operations, including equivalent wording in other languages (for example: "покажи", "найди", "перейди к"). For these requests, propose HIGHLIGHT and SCROLL_TO for the grounded element.
+For comparison or superlative requests (for example most viewed, largest, newest, or highest), compare every relevant supplied item using only values present in its text. Cite and target the winning item itself, never a broad feed or page container.
+Questions such as "what is this post about?" or "о чём говорится в этом посте?" are factual questions, not visual operations. Answer them directly from evidence and return no actions.
 For ordinary factual questions, return references but no actions unless the user explicitly requests a visual operation.`;
 
 export function buildPageContext(input: AgentPlanInput): string {

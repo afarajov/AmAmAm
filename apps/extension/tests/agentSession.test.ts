@@ -135,7 +135,7 @@ describe("AgentSession with the semantic page engine", () => {
     expect(result.hasPageModifications).toBe(true);
     expect(paragraph.classList).toContain("contextlayer-engine-highlight");
 
-    const referenceResult = session.scrollToReference(
+    const referenceResult = await session.scrollToReference(
       result.response.references![0]!.elementId
     );
     expect(referenceResult.executionResults[0]).toMatchObject({
@@ -215,5 +215,29 @@ describe("AgentSession with the semantic page engine", () => {
       type: "HIGHLIGHT",
       success: true
     });
+  });
+
+  it("rescans a dynamic page before navigating to an existing reference", async () => {
+    const paragraph = document.querySelector("p")!;
+    paragraph.scrollIntoView = vi.fn();
+    const pageEngine = createPageEngine(document);
+    const session = createAgentSession(pageEngine, new HighlightFirstElementGateway());
+    const turn = await session.submit("Find the privacy controls");
+
+    const liveRegion = document.createElement("span");
+    liveRegion.textContent = "A live notification unrelated to the referenced paragraph.";
+    document.body.append(liveRegion);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const result = await session.scrollToReference(
+      turn.response.references![0]!.elementId
+    );
+
+    expect(result.executionResults).toHaveLength(1);
+    expect(result.executionResults[0]).toMatchObject({
+      type: "SCROLL_TO",
+      success: true
+    });
+    expect(paragraph.scrollIntoView).toHaveBeenCalledOnce();
   });
 });

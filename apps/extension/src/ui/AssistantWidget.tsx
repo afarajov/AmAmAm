@@ -214,9 +214,9 @@ export function AssistantWidget({
     }
   };
 
-  const handleReferenceClick = (messageId: string, elementId: string) => {
+  const handleReferenceClick = async (messageId: string, elementId: string) => {
     try {
-      const result = agentSession.scrollToReference(elementId);
+      const result = await agentSession.scrollToReference(elementId);
       setMessages((current) => current.map((message) => (
         message.id === messageId
           ? {
@@ -333,7 +333,7 @@ export function AssistantWidget({
                         <button
                           type="button"
                           key={`${reference.elementId}-${index}`}
-                          onClick={() => handleReferenceClick(message.id, reference.elementId)}
+                          onClick={() => void handleReferenceClick(message.id, reference.elementId)}
                         >
                           <LocateFixed aria-hidden="true" size={14} />
                           <span>{reference.excerpt || reference.elementId}</span>

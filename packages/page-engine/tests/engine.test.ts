@@ -258,6 +258,50 @@ describe("SemanticPageEngine", () => {
     engine.dispose();
   });
 
+  it("keeps an Instagram caption nested inside obfuscated repeated containers", () => {
+    load(`
+      <main>
+        <div class="x1-obfuscated-layout">
+          <div><span>Six prompts turn Claude into a private tutor who pushes back instead of handing you answers.</span></div>
+        </div>
+        <div class="x1-obfuscated-layout"><span>Suggested accounts</span></div>
+      </main>
+    `);
+    const snapshot = createPageEngine(document).scan();
+    const matching = snapshot.elements.filter((element) => element.text.includes("private tutor"));
+
+    expect(matching).toHaveLength(1);
+    expect(matching[0]).toMatchObject({ kind: "paragraph", tagName: "span" });
+  });
+
+  it("extracts YouTube renderers as separate cards instead of one feed container", () => {
+    load(`
+      <main>
+        <div class="obfuscated-column">
+          <ytd-rich-item-renderer>
+            <a href="/watch?v=one">First video</a><span>331K views</span>
+          </ytd-rich-item-renderer>
+          <ytd-rich-item-renderer>
+            <a href="/watch?v=two">Most watched video</a><span>543K views</span>
+          </ytd-rich-item-renderer>
+        </div>
+        <div class="obfuscated-column"><span>Unrelated sidebar</span></div>
+      </main>
+    `);
+    const snapshot = createPageEngine(document).scan();
+    const cards = snapshot.elements.filter((element) => (
+      element.kind === "card" && element.tagName === "ytd-rich-item-renderer"
+    ));
+
+    expect(cards.map((element) => element.text)).toEqual([
+      "First video 331K views",
+      "Most watched video 543K views",
+    ]);
+    expect(snapshot.elements.some((element) => (
+      element.text.includes("First video") && element.text.includes("Most watched video")
+    ))).toBe(false);
+  });
+
   it("extracts repeated LinkedIn-like feed posts without child duplication", () => {
     load(linkedinFeedHtml);
     const engine = createPageEngine(document);

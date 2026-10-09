@@ -11,6 +11,7 @@ interface Candidate {
   kind: ElementKind;
   text: string;
   composite: boolean;
+  suppressesDescendants: boolean;
 }
 
 const CANDIDATE_SELECTOR = [
@@ -36,6 +37,12 @@ const CANDIDATE_SELECTOR = [
   "[class*='caption' i]",
   "article [dir='auto']",
   "article span",
+  "main span",
+  "[role='main'] span",
+  "ytd-rich-item-renderer",
+  "ytd-video-renderer",
+  "ytd-grid-video-renderer",
+  "ytd-compact-video-renderer",
   "div[class]",
 ].join(",");
 
@@ -84,14 +91,20 @@ export function extractSemanticElements(
     if (!isMeaningful(text, classification.kind)) continue;
 
     const dedupeKey = text.toLocaleLowerCase();
-    if (candidates.some((candidate) => candidate.composite && candidate.element.contains(element))) {
+    if (candidates.some((candidate) => (
+      candidate.suppressesDescendants && candidate.element.contains(element)
+    ))) {
       continue;
     }
 
     const existingIndex = seenText.get(dedupeKey);
     if (existingIndex !== undefined) {
       const existing = candidates[existingIndex];
-      if (existing && !existing.composite && existing.element.contains(element)) {
+      if (
+        existing &&
+        existing.element.contains(element) &&
+        (!existing.composite || !existing.suppressesDescendants)
+      ) {
         candidates[existingIndex] = { element, text, ...classification };
       }
       continue;
@@ -161,25 +174,64 @@ function isEligible(
   return isRendered(element, view);
 }
 
-function classify(element: Element): Pick<Candidate, "kind" | "composite"> | undefined {
+function classify(
+  element: Element,
+): Pick<Candidate, "kind" | "composite" | "suppressesDescendants"> | undefined {
   const tag = element.tagName.toLowerCase();
   const role = element.getAttribute("role")?.toLowerCase();
   const hint = `${element.id} ${element.className}`;
   const composite = COMPOSITE_HINT.test(hint);
 
-  if (/^h[1-6]$/.test(tag)) return { kind: "heading", composite: false };
-  if (tag === "p" || tag === "blockquote") return { kind: "paragraph", composite: false };
-  if (isCaptionContainer(element)) {
-    return { kind: "paragraph", composite: isExplicitCaptionContainer(element) };
+  if (/^h[1-6]$/.test(tag)) {
+    return { kind: "heading", composite: false, suppressesDescendants: false };
   }
-  if (tag === "li" || role === "listitem") return { kind: "list-item", composite: false };
-  if (tag === "tr" || role === "row") return { kind: "table-row", composite: false };
-  if (tag === "a") return { kind: "link", composite: false };
-  if (/comment|review/i.test(hint)) return { kind: "comment", composite: true };
-  if (composite || isRepeatedSibling(element)) return { kind: "card", composite: true };
-  if (tag === "article" || role === "article") return { kind: "article", composite: false };
-  if (tag === "main" || tag === "section") return { kind: "section", composite: false };
+  if (tag === "p" || tag === "blockquote") {
+    return { kind: "paragraph", composite: false, suppressesDescendants: false };
+  }
+  if (isCaptionContainer(element)) {
+    const explicit = isExplicitCaptionContainer(element);
+    return { kind: "paragraph", composite: explicit, suppressesDescendants: explicit };
+  }
+  if (isKnownCardElement(tag)) {
+    return { kind: "card", composite: true, suppressesDescendants: true };
+  }
+  if (tag === "span" && element.children.length === 0) {
+    return { kind: "paragraph", composite: false, suppressesDescendants: false };
+  }
+  if (tag === "li" || role === "listitem") {
+    return { kind: "list-item", composite: false, suppressesDescendants: false };
+  }
+  if (tag === "tr" || role === "row") {
+    return { kind: "table-row", composite: false, suppressesDescendants: false };
+  }
+  if (tag === "a") {
+    return { kind: "link", composite: false, suppressesDescendants: false };
+  }
+  if (/comment|review/i.test(hint)) {
+    return { kind: "comment", composite: true, suppressesDescendants: true };
+  }
+  if (composite) {
+    return { kind: "card", composite: true, suppressesDescendants: true };
+  }
+  if (isRepeatedSibling(element)) {
+    return { kind: "card", composite: true, suppressesDescendants: false };
+  }
+  if (tag === "article" || role === "article") {
+    return { kind: "article", composite: false, suppressesDescendants: false };
+  }
+  if (tag === "main" || tag === "section") {
+    return { kind: "section", composite: false, suppressesDescendants: false };
+  }
   return undefined;
+}
+
+function isKnownCardElement(tag: string): boolean {
+  return [
+    "ytd-rich-item-renderer",
+    "ytd-video-renderer",
+    "ytd-grid-video-renderer",
+    "ytd-compact-video-renderer",
+  ].includes(tag);
 }
 
 function isRepeatedSibling(element: Element): boolean {
@@ -247,11 +299,13 @@ function isExplicitCaptionContainer(element: Element): boolean {
 }
 
 function hasMoreSpecificTextDescendant(candidate: Candidate, candidates: Candidate[]): boolean {
-  if (candidate.composite) return false;
+  if (candidate.suppressesDescendants) return false;
   return candidates.some((other) => {
-    if (other === candidate || other.composite || !candidate.element.contains(other.element)) {
+    if (other === candidate || !candidate.element.contains(other.element)) {
       return false;
     }
+    if (candidate.composite) return true;
+    if (other.composite) return false;
     if (!candidate.text.includes(other.text)) return false;
     const omittedLength = candidate.text.length - other.text.length;
     return other.text.length / candidate.text.length >= 0.65 && omittedLength <= 60;

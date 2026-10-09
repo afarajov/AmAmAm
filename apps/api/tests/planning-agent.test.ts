@@ -85,6 +85,29 @@ describe("PlanningAgentService", () => {
     expect(response.references?.[0]?.elementId).toBe("node-00003");
   });
 
+  it("drops unsolicited browser actions from an ordinary factual question", async () => {
+    const factualRequest: AgentRequest = {
+      ...request,
+      query: "О чём говорится в этом посте?"
+    };
+    const planner: AgentPlanner = { plan: async () => ({
+      grounding: "SUPPORTED",
+      message: "Пост рассказывает о приватном AI-репетиторе.",
+      references: [{ elementId: "node-00002", excerpt: "Privacy risks" }],
+      actions: [{
+        type: "HIGHLIGHT",
+        targetElementIds: ["node-00002"],
+        explanation: "Not explicitly requested"
+      }],
+      limitations: []
+    }) };
+
+    const response = await new PlanningAgentService(planner).query(factualRequest);
+
+    expect(response.message).toBe("Пост рассказывает о приватном AI-репетиторе.");
+    expect(response.actions).toEqual([]);
+  });
+
   it("keeps long grounded excerpts within the public response contract", async () => {
     const longEvidence = "Career evidence ".repeat(40);
     const longEvidenceRequest: AgentRequest = {

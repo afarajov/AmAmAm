@@ -65,7 +65,7 @@ export interface LocalActionResult {
 
 export interface AgentSession {
   submit(query: string, options?: SubmitOptions): Promise<AgentTurnResult>;
-  scrollToReference(elementId: string): LocalActionResult;
+  scrollToReference(elementId: string): Promise<LocalActionResult>;
   reset(): LocalActionResult;
   invalidatePage(): void;
 }
@@ -83,6 +83,10 @@ function hasStaleFailure(results: ActionExecutionResult[]): boolean {
   return results.some((result) => (
     result.failures.some((failure) => failure.code === "STALE_SNAPSHOT")
   ));
+}
+
+function normalizeReferenceText(value: string): string {
+  return value.replace(/\s+/g, " ").trim().toLocaleLowerCase();
 }
 
 function assertCorrelatedResponse(request: AgentRequest, response: AgentResponse): void {
@@ -232,8 +236,36 @@ export function createAgentSession(
       throw new AgentSessionError("RESCAN_REQUIRED", "A new page scan is required.");
     },
 
-    scrollToReference(elementId) {
-      return executeLocalActions([{ type: "SCROLL_TO", targetElementIds: [elementId] }]);
+    async scrollToReference(elementId) {
+      const previousPage = currentPage;
+      const previousElement = previousPage?.elements.find((element) => element.id === elementId);
+      const firstAttempt = executeLocalActions([
+        { type: "SCROLL_TO", targetElementIds: [elementId] }
+      ]);
+      if (!hasStaleFailure(firstAttempt.executionResults) || !previousPage || !previousElement) {
+        return firstAttempt;
+      }
+
+      await scanCoordinator?.prepareForScan();
+      const refreshedPage = pageEngine.scan();
+      if (refreshedPage.url !== previousPage.url) return firstAttempt;
+
+      const previousText = normalizeReferenceText(previousElement.text);
+      const refreshedElement = refreshedPage.elements.find((element) => {
+        const refreshedText = normalizeReferenceText(element.text);
+        return refreshedText === previousText || (
+          previousText.length >= 20 &&
+          (refreshedText.includes(previousText) || previousText.includes(refreshedText))
+        );
+      });
+      if (!refreshedElement) return firstAttempt;
+
+      currentPage = refreshedPage;
+      modifiedElementIds.clear();
+      return executeLocalActions([{
+        type: "SCROLL_TO",
+        targetElementIds: [refreshedElement.id]
+      }]);
     },
 
     reset() {
