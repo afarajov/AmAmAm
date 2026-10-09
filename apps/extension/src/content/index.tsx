@@ -33,6 +33,7 @@ function mountExtensionShell(): void {
       activationEvent={ACTIVATE_EVENT}
       agentSession={runtime.agentSession}
       modeLabel={runtime.modeLabel}
+      checkConnection={runtime.checkConnection}
     />
   );
 }

@@ -1,6 +1,8 @@
-import { defineConfig, type Plugin } from "vite";
+import { defineConfig, loadEnv, type Plugin } from "vite";
 
-function manifestPlugin(mode: string): Plugin {
+import { normalizeApiOrigin } from "./build/apiOrigin.ts";
+
+function manifestPlugin(mode: string, apiOrigin: string): Plugin {
   const manifest = {
     manifest_version: 3,
     name: "ContextLayer",
@@ -8,7 +10,7 @@ function manifestPlugin(mode: string): Plugin {
     version: "0.1.0",
     permissions: ["activeTab", "scripting", "storage"],
     ...(mode === "api"
-      ? { host_permissions: ["http://127.0.0.1:8787/*"] }
+      ? { host_permissions: [`${apiOrigin}/*`] }
       : {}),
     background: {
       service_worker: "background.js",
@@ -31,16 +33,22 @@ function manifestPlugin(mode: string): Plugin {
   };
 }
 
-export default defineConfig(({ mode }) => ({
-  plugins: [manifestPlugin(mode)],
-  publicDir: false,
-  build: {
-    outDir: mode === "api" ? "dist" : "dist-mock",
-    emptyOutDir: false,
-    lib: {
-      entry: new URL("./src/background/index.ts", import.meta.url).pathname,
-      formats: ["es"],
-      fileName: () => "background.js"
+export default defineConfig(({ mode }) => {
+  const apiOrigin = normalizeApiOrigin(loadEnv(mode, process.cwd(), "").VITE_CONTEXTLAYER_API_BASE_URL);
+  return {
+    plugins: [manifestPlugin(mode, apiOrigin)],
+    publicDir: false,
+    define: {
+      "import.meta.env.VITE_CONTEXTLAYER_API_BASE_URL": JSON.stringify(apiOrigin)
+    },
+    build: {
+      outDir: mode === "api" ? "dist" : "dist-mock",
+      emptyOutDir: false,
+      lib: {
+        entry: new URL("./src/background/index.ts", import.meta.url).pathname,
+        formats: ["es"],
+        fileName: () => "background.js"
+      }
     }
-  }
-}));
+  };
+});

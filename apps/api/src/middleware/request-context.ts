@@ -22,6 +22,9 @@ export function requestContext(logger: Logger) {
         method: request.method,
         path: request.path,
         status: response.statusCode,
+        ...(typeof response.locals.errorCode === "string"
+          ? { errorCode: response.locals.errorCode }
+          : {}),
         durationMs: Math.round((performance.now() - startedAt) * 100) / 100
       });
     });

@@ -65,8 +65,8 @@ export function buildEvidenceExcerpt(elementText: string): string {
 export class OpenAIResponsesPlanner implements AgentPlanner {
   private readonly client: OpenAI;
 
-  constructor(apiKey: string, private readonly model: string, timeoutMs: number) {
-    this.client = new OpenAI({ apiKey, timeout: timeoutMs, maxRetries: 1 });
+  constructor(apiKey: string, private readonly model: string, timeoutMs: number, maxRetries = 1) {
+    this.client = new OpenAI({ apiKey, timeout: timeoutMs, maxRetries });
   }
 
   async plan(input: AgentPlanInput): Promise<AgentPlan> {

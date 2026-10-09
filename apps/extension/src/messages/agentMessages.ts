@@ -1,6 +1,7 @@
 import type { AgentRequest, AgentResponse, ApiError } from "@contextlayer/shared";
 
 export const AGENT_QUERY_MESSAGE = "CONTEXTLAYER_AGENT_QUERY" as const;
+export const AGENT_HEALTH_MESSAGE = "CONTEXTLAYER_AGENT_HEALTH" as const;
 
 export interface AgentQueryMessage {
   type: typeof AGENT_QUERY_MESSAGE;
@@ -10,6 +11,15 @@ export interface AgentQueryMessage {
 export type AgentQueryMessageResult =
   | { ok: true; payload: AgentResponse }
   | { ok: false; error: ApiError };
+
+export interface AgentHealthMessage {
+  type: typeof AGENT_HEALTH_MESSAGE;
+}
+
+export function isAgentHealthMessage(value: unknown): value is AgentHealthMessage {
+  return typeof value === "object" && value !== null &&
+    (value as Record<string, unknown>).type === AGENT_HEALTH_MESSAGE;
+}
 
 export function isAgentQueryMessage(value: unknown): value is AgentQueryMessage {
   if (typeof value !== "object" || value === null) return false;

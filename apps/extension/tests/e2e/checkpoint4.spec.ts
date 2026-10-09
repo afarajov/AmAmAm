@@ -150,6 +150,36 @@ test("settings persist appearance and chat history survives a reload", async ({ 
   await expect(page.locator("#contextlayer-extension-root")).toHaveAttribute("data-contextlayer-theme", "dark");
 });
 
+test("history supports individual deletion and clearing all conversations", async ({ page }) => {
+  await openFixture(page);
+  await submit(page, "Factual query");
+  await page.getByRole("button", { name: "History" }).click();
+  await expect(page.getByLabel("Chat history")).toContainText("Factual query");
+
+  await page.getByRole("button", { name: /Delete chat/ }).click();
+  await expect(page.getByLabel("Chat history")).toContainText("No messages");
+
+  await page.getByRole("button", { name: "History" }).click();
+  await submit(page, "Factual query");
+  await page.getByRole("button", { name: "History" }).click();
+  await page.getByRole("button", { name: "Clear all" }).click();
+  await expect(page.getByLabel("Chat history")).toContainText("No messages");
+});
+
+test("save-history disabled prevents restoring a conversation", async ({ page }) => {
+  await openFixture(page);
+  await page.getByRole("button", { name: "Settings" }).click();
+  await page.getByRole("button", { name: "Personalization" }).click();
+  await page.getByRole("checkbox", { name: "Save history" }).uncheck();
+  await page.getByRole("button", { name: "Settings" }).click();
+  await submit(page, "Factual query");
+  await expect(page.getByText("This is a grounded factual answer.")).toBeVisible();
+
+  await page.reload();
+  await page.getByRole("button", { name: "Open ContextLayer assistant" }).click();
+  await expect(page.getByText("This is a grounded factual answer.")).toHaveCount(0);
+});
+
 test("malformed response is rejected before any DOM action", async ({ page }) => {
   await openFixture(page);
   await submit(page, "Simulate malformed response");
@@ -165,8 +195,51 @@ test("backend error is distinct and does not execute an action", async ({ page }
   await submit(page, "Simulate backend error");
 
   await expect(page.getByRole("alert")).toContainText(
-    "The AI backend could not prepare the request"
+    "The AI provider could not produce a valid response"
   );
   await expect(page.getByLabel("Action results")).toHaveCount(0);
   await expect(page.locator("[class*='contextlayer-engine-']")).toHaveCount(0);
+});
+
+test("duplicate content injection keeps one isolated extension root", async ({ page }) => {
+  await page.goto("/tests/e2e/fixture.html");
+  await page.addScriptTag({ url: "/dist-mock/content.js" });
+  await page.addScriptTag({ url: "/dist-mock/content.js" });
+  await expect(page.locator("#contextlayer-extension-root")).toHaveCount(1);
+});
+
+test("backend unavailable and rate limit have distinct safe messages", async ({ page }) => {
+  await openFixture(page);
+  await submit(page, "Simulate backend unavailable");
+  await expect(page.getByRole("alert")).toContainText("backend is unavailable");
+
+  await submit(page, "Simulate rate limit");
+  await expect(page.getByRole("alert")).toContainText("backend is busy");
+});
+
+test("missing information is honest and does not mutate the page", async ({ page }) => {
+  await openFixture(page);
+  await submit(page, "Information absent");
+  await expect(page.getByText("This information is not present on the page.")).toBeVisible();
+  await expect(page.getByLabel("Sources")).toHaveCount(0);
+  await expect(page.getByLabel("Action results")).toHaveCount(0);
+  await expect(page.locator("[class*='contextlayer-engine-']")).toHaveCount(0);
+});
+
+test("keyboard activation and settings remain usable on a small viewport", async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 568 });
+  await page.goto("/tests/e2e/fixture.html");
+  await page.getByRole("button", { name: "Open ContextLayer assistant" }).focus();
+  await page.keyboard.press("Enter");
+  const panel = page.getByLabel("ContextLayer assistant");
+  await expect(panel).toBeVisible();
+  const bounds = await panel.boundingBox();
+  expect(bounds).not.toBeNull();
+  expect(bounds!.x).toBeGreaterThanOrEqual(0);
+  expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(320);
+  expect(bounds!.y + bounds!.height).toBeLessThanOrEqual(568);
+
+  await page.getByRole("button", { name: "Settings" }).click();
+  await page.getByRole("button", { name: "Data", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Reset", exact: true })).toBeVisible();
 });

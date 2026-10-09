@@ -1,4 +1,8 @@
 export interface PageEngineOptions {
+  /** Maximum DOM elements inspected during one synchronous scan. */
+  maxDomNodes?: number;
+  /** Maximum semantic candidates scored before snapshot selection. */
+  maxCandidates?: number;
   /** Maximum number of semantic blocks included in one snapshot. */
   maxElements?: number;
   /** Maximum combined number of normalized text characters. */
@@ -16,6 +20,8 @@ export interface PageEngineOptions {
 }
 
 export interface ResolvedPageEngineOptions {
+  maxDomNodes: number;
+  maxCandidates: number;
   maxElements: number;
   maxTotalTextLength: number;
   maxElementTextLength: number;
@@ -26,6 +32,8 @@ export interface ResolvedPageEngineOptions {
 }
 
 export const DEFAULT_OPTIONS: ResolvedPageEngineOptions = {
+  maxDomNodes: 20_000,
+  maxCandidates: 2_000,
   maxElements: 200,
   maxTotalTextLength: 30_000,
   maxElementTextLength: 2_000,
@@ -39,6 +47,8 @@ export function resolveOptions(
   options: PageEngineOptions = {},
 ): ResolvedPageEngineOptions {
   return {
+    maxDomNodes: positiveInteger(options.maxDomNodes, DEFAULT_OPTIONS.maxDomNodes),
+    maxCandidates: positiveInteger(options.maxCandidates, DEFAULT_OPTIONS.maxCandidates),
     maxElements: positiveInteger(options.maxElements, DEFAULT_OPTIONS.maxElements),
     maxTotalTextLength: positiveInteger(
       options.maxTotalTextLength,

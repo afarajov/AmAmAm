@@ -4,14 +4,17 @@ export class ElementMapper {
   private nextId = 1;
 
   reset(): void {
-    this.elementToId = new WeakMap<Element, string>();
+    // Keep the weak element identity for this Document lifetime, but expose
+    // only elements selected by the current snapshot through idToElement.
     this.idToElement.clear();
-    this.nextId = 1;
   }
 
   getOrAssign(element: Element): string {
     const existing = this.elementToId.get(element);
-    if (existing) return existing;
+    if (existing) {
+      this.idToElement.set(existing, element);
+      return existing;
+    }
 
     const id = `node-${String(this.nextId).padStart(5, "0")}`;
     this.nextId += 1;

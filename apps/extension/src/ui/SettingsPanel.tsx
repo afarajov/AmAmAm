@@ -82,7 +82,7 @@ function Segmented({ values, active, onSelect }: { values: string[]; active: str
 }
 
 function ToggleRow({ label, hint, checked, onChange }: { label: string; hint: string; checked: boolean; onChange: (value: boolean) => void }) {
-  return <SettingRow label={label} hint={hint}><input className="contextlayer-toggle" type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} /></SettingRow>;
+  return <SettingRow label={label} hint={hint}><input className="contextlayer-toggle" type="checkbox" aria-label={label} checked={checked} onChange={(event) => onChange(event.target.checked)} /></SettingRow>;
 }
 
 function capitalize(value: string): string { return value.charAt(0).toUpperCase() + value.slice(1); }

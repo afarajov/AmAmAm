@@ -7,6 +7,7 @@
     "build": "vite build --mode api --config vite.content.config.ts && vite build --mode api --config vite.background.config.ts",
     "build:api": "vite build --mode api --config vite.content.config.ts && vite build --mode api --config vite.background.config.ts",
     "build:mock": "vite build --config vite.content.config.ts && vite build --config vite.background.config.ts",
+    "release": "npm run build && node scripts/package-release.mjs",
     "test": "vitest run",
     "test:e2e": "playwright test",
     "typecheck": "tsc --noEmit"
