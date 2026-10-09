@@ -1,5 +1,9 @@
 # Prompts for the other two coding agents
 
+The current final hardening assignment is defined in
+[`checkpoint-5-plan.md`](checkpoint-5-plan.md). Each agent must read the shared
+rules, its own section and the integration gate before changing code.
+
 Send the relevant block after both developers pull the architecture commit.
 
 ## Developer 2 — DOM Engine

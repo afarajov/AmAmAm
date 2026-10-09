@@ -29,6 +29,21 @@ inputs are batched and bounded; the API key remains server-side.
 - page text is passed as untrusted data and cannot change system instructions;
 - action responses describe a proposed browser operation, never a completed one.
 
+## Action intent policy
+
+Before a model plan can reach the extension, the API classifies the request as
+factual, an explicit page action, or an action with an unresolved target.
+Factual requests cannot execute model-proposed actions. Explicit commands are
+restricted to the requested action types, compound commands must contain every
+requested operation, and `RESTORE_ALL` is accepted only for an explicit full
+reset request. Commands such as `hide this` return a localized clarification
+without calling the model because the stateless API has no safe referent for
+`this`.
+
+Supported action intents are `SCROLL_TO`, `HIGHLIGHT`, `DIM`, `STRIKE`, `HIDE`,
+`CLEAR_EFFECT`, and `RESTORE_ALL`, including Russian and English commands.
+Targeted actions remain evidence-bound and are deduplicated before transport.
+
 ## Responsibilities
 
 - `POST /api/agent/query` and `GET /health`;
@@ -52,7 +67,7 @@ rate limits and timeouts are returned immediately as `RATE_LIMITED` and
 src/
 ├── routes/       # HTTP transport only
 ├── retrieval/    # candidate selection and context budget
-├── ai/           # provider, prompts and structured planning
+├── ai/           # intent policy, provider, prompts and structured planning
 ├── validation/   # boundary and target validation
 ├── config/       # validated environment configuration
 └── app.ts        # composition root

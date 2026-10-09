@@ -1,8 +1,9 @@
-import type { AgentRequest, AgentResponse } from "@contextlayer/shared";
+import type { AgentActionType, AgentRequest, AgentResponse } from "@contextlayer/shared";
 import { HttpError } from "../errors/api-error.js";
 import type { SemanticElement } from "@contextlayer/shared";
 import { selectCandidateElements } from "../retrieval/select-candidates.js";
 import type { AgentPlan, AgentPlanner } from "../ai/agent-planner.js";
+import { classifyQueryIntent, isVisualOperationIntent, type QueryIntent } from "../ai/intent-policy.js";
 import { validateGroundedPlan } from "../validation/grounding.js";
 
 /** Boundary implemented by the AI pipeline in later stages. */
@@ -18,6 +19,7 @@ export type CandidateSelector = (
 const lexicalCandidateSelector: CandidateSelector = async (query, elements) =>
   selectCandidateElements(query, elements);
 const MAX_GROUNDED_PLAN_ATTEMPTS = 2;
+const USER_PREFERENCES_MARKER = "\n\n[CONTEXTLAYER_USER_PREFERENCES]";
 
 /** Production-safe default: never pretends that AI reasoning happened. */
 export class UnavailableAgentService implements AgentService {
@@ -33,7 +35,11 @@ export class PlanningAgentService implements AgentService {
   ) {}
 
   async query(request: AgentRequest): Promise<AgentResponse> {
-    const candidates = await this.candidateSelector(request.query, request.page.elements);
+    const primaryQuery = request.query.split(USER_PREFERENCES_MARKER, 1)[0]?.trim() || request.query;
+    const intent = classifyQueryIntent(primaryQuery);
+    if (intent.kind === "AMBIGUOUS_ACTION") return ambiguousActionResponse(request);
+
+    const candidates = await this.candidateSelector(primaryQuery, request.page.elements);
     const planInput = {
       query: request.query,
       pageTitle: request.page.title,
@@ -46,7 +52,10 @@ export class PlanningAgentService implements AgentService {
       const rawPlan = await this.planner.plan(planInput);
       try {
         validateUserFacingMessage(rawPlan.message);
-        plan = validateGroundedPlan(rawPlan, candidates);
+        const intentRestrictedPlan = restrictPlanToRequestedActions(rawPlan, intent);
+        const validatedPlan = validateGroundedPlan(intentRestrictedPlan, candidates);
+        validatePlanIntent(validatedPlan, intent);
+        plan = validatedPlan;
         break;
       } catch (error) {
         validationError = error;
@@ -54,14 +63,14 @@ export class PlanningAgentService implements AgentService {
       }
     }
     if (plan === undefined) throw validationError;
-    const allowsBrowserActions = isVisualOperationQuery(request.query);
+    const allowsBrowserActions = isVisualOperationIntent(intent);
     const responseActions = allowsBrowserActions ? plan.actions : [];
 
     return {
       requestId: request.requestId,
       pageId: request.page.pageId,
       snapshotVersion: request.page.snapshotVersion,
-      message: responseMessage(request.query, plan, responseActions.length > 0),
+      message: responseMessage(primaryQuery, plan, responseActions.length > 0),
       references: plan.references.map(({ elementId, excerpt }) => ({
         elementId,
         // Grounding is already verified, so a prefix remains an exact quote
@@ -80,6 +89,18 @@ export class PlanningAgentService implements AgentService {
   }
 }
 
+function restrictPlanToRequestedActions(plan: AgentPlan, intent: QueryIntent): AgentPlan {
+  if (intent.kind !== "ACTION" || intent.requiredActions.includes("RESTORE_ALL")) {
+    return plan;
+  }
+
+  const requested = new Set<AgentActionType>(intent.requiredActions);
+  return {
+    ...plan,
+    actions: plan.actions.filter((action) => requested.has(action.type))
+  };
+}
+
 function validateUserFacingMessage(message: string): void {
   if (/\bnode-\d{5}\b/iu.test(message) || /\belementId\b/iu.test(message)) {
     throw new HttpError(502, "MODEL_ERROR", "The AI pipeline exposed internal element metadata.");
@@ -92,15 +113,39 @@ function responseMessage(query: string, plan: AgentPlan, hasRequestedActions: bo
   return plan.message;
 }
 
-const VISUAL_OPERATION_PATTERNS = [
-  /\b(?:show|highlight|dim|strike|hide|scroll|locate|find)\b/iu,
-  /\b(?:go|take)\s+(?:me\s+)?to\b/iu,
-  /(?:^|[^\p{L}])(?:покаж|подсвет|выдел|скро|зачерк|затемн|прокрут|перейд|найд)[\p{L}]*/iu,
-  /(?:^|[^\p{L}])(?:göstər|vurğula|gizlət|sürüşdür|keç|tap)[\p{L}]*/iu,
-];
-
 export function isVisualOperationQuery(query: string): boolean {
-  return VISUAL_OPERATION_PATTERNS.some((pattern) => pattern.test(query));
+  return isVisualOperationIntent(classifyQueryIntent(query));
+}
+
+function validatePlanIntent(plan: AgentPlan, intent: QueryIntent): void {
+  if (intent.kind === "FACTUAL") {
+    if (plan.grounding === "NOT_APPLICABLE") throw invalidIntentPlan();
+    return;
+  }
+  if (intent.kind === "AMBIGUOUS_ACTION") throw invalidIntentPlan();
+
+  const required = new Set<AgentActionType>(intent.requiredActions);
+  if (required.has("RESTORE_ALL")) {
+    if (
+      plan.grounding !== "NOT_APPLICABLE" ||
+      plan.actions.length !== 1 ||
+      plan.actions[0]?.type !== "RESTORE_ALL"
+    ) throw invalidIntentPlan();
+    return;
+  }
+
+  if (plan.grounding === "NOT_FOUND") return;
+  if (plan.grounding !== "SUPPORTED") throw invalidIntentPlan();
+  const plannedTypes = new Set(plan.actions.map((action) => action.type));
+  if (
+    plan.actions.length === 0 ||
+    plan.actions.some((action) => !required.has(action.type)) ||
+    [...required].some((type) => !plannedTypes.has(type))
+  ) throw invalidIntentPlan();
+}
+
+function invalidIntentPlan(): HttpError {
+  return new HttpError(502, "MODEL_ERROR", "The AI pipeline returned actions that do not match the user intent.");
 }
 
 function languageOf(query: string): "ru" | "az" | "en" {
@@ -121,4 +166,21 @@ function proposedActionMessage(query: string): string {
   if (language === "ru") return "Я нашёл подтверждающие фрагменты и подготовил действие для браузера.";
   if (language === "az") return "Təsdiqləyici hissələri tapdım və brauzer üçün əməliyyat hazırladım.";
   return "I found supporting page content and prepared the requested browser action.";
+}
+
+function ambiguousActionResponse(request: AgentRequest): AgentResponse {
+  const language = languageOf(request.query);
+  const message = language === "ru"
+    ? "Уточните, к какому элементу страницы нужно применить действие."
+    : language === "az"
+      ? "Əməliyyatın səhifədə hansı elementə tətbiq edilməli olduğunu dəqiqləşdirin."
+      : "Please specify which page element the action should apply to.";
+  return {
+    requestId: request.requestId,
+    pageId: request.page.pageId,
+    snapshotVersion: request.page.snapshotVersion,
+    message,
+    references: [],
+    actions: []
+  };
 }

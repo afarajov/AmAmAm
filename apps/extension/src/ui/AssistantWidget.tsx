@@ -2,11 +2,13 @@ import {
   AlertCircle,
   CircleCheck,
   CircleX,
+  Clock3,
+  FileText,
   LocateFixed,
-  MessageCircle,
   RotateCcw,
   Send,
-  Sparkles
+  Settings,
+  X
 } from "lucide-react";
 import { FormEvent, KeyboardEvent, useEffect, useId, useRef, useState } from "react";
 
@@ -16,6 +18,24 @@ import type {
   AgentSession,
   AgentSessionProgress
 } from "../integration/agentSession";
+import {
+  clearChatHistory,
+  DEFAULT_SETTINGS,
+  deleteChatSession,
+  loadHistory,
+  loadSettings,
+  messagesForStorage,
+  messagesFromStorage,
+  queryWithPreferences,
+  saveChatSession,
+  saveSettings,
+  type ChatSession,
+  type UserSettings
+} from "../storage/userData";
+import { presentActionResult } from "./actionPresentation";
+import { HistoryPanel, MessageActions } from "./ChatUtilities";
+import { LotusMark } from "./LotusMark";
+import { SettingsPanel } from "./SettingsPanel";
 import type { ChatMessage, RequestStatus } from "./types";
 
 interface AssistantWidgetProps {
@@ -48,6 +68,11 @@ function readableError(error: unknown): string {
       return "The AI backend took too long to respond. Try again.";
     case "RATE_LIMITED":
       return "The AI backend is busy. Wait a moment and try again.";
+    case "INVALID_RESPONSE":
+      return "The AI backend returned an invalid response. No page action was run.";
+    case "MODEL_ERROR":
+    case "INTERNAL_ERROR":
+      return "The AI backend could not prepare the request. No page action was run.";
     default:
       return error instanceof Error ? error.message : "The agent request failed unexpectedly.";
   }
@@ -63,7 +88,8 @@ function createMessage(text: string, role: ChatMessage["role"]): ChatMessage {
 
 function createAssistantMessage(
   response: AgentResponse,
-  executionResults: ActionExecutionResult[]
+  executionResults: ActionExecutionResult[],
+  retryQuery: string
 ): ChatMessage {
   const failedResults = executionResults.filter((result) => !result.success);
   const successfulResults = executionResults.filter((result) => result.success);
@@ -83,6 +109,7 @@ function createAssistantMessage(
     id: crypto.randomUUID(),
     role: "assistant",
     text,
+    retryQuery,
     references: response.references,
     executionResults
   };
@@ -107,16 +134,64 @@ export function AssistantWidget({
   modeLabel
 }: AssistantWidgetProps) {
   const [isOpen, setIsOpen] = useState(false);
+  const [view, setView] = useState<"chat" | "history" | "settings">("chat");
   const [draft, setDraft] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [history, setHistory] = useState<ChatSession[]>([]);
+  const [settings, setSettings] = useState<UserSettings>(DEFAULT_SETTINGS);
+  const [storageReady, setStorageReady] = useState(false);
+  const [sessionId, setSessionId] = useState<string>(() => crypto.randomUUID());
   const [status, setStatus] = useState<RequestStatus>("idle");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [hasPageModifications, setHasPageModifications] = useState(false);
   const [activityMessage, setActivityMessage] = useState("Waiting for response…");
   const [pageNotice, setPageNotice] = useState<string | null>(null);
+  const [pageTitle, setPageTitle] = useState(
+    activationTarget.ownerDocument.title || "Current page"
+  );
   const inputId = useId();
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const messagesRef = useRef<HTMLDivElement>(null);
+  const requestInFlightRef = useRef(false);
+
+  useEffect(() => {
+    let active = true;
+    void Promise.all([loadSettings(), loadHistory()]).then(([storedSettings, storedHistory]) => {
+      if (!active) return;
+      setSettings(storedSettings);
+      setHistory(storedHistory);
+      const currentUrl = activationTarget.ownerDocument.location.href;
+      const latest = storedHistory.find((session) => session.url === currentUrl);
+      if (latest && storedSettings.saveHistory) {
+        setSessionId(latest.id);
+        setMessages(messagesFromStorage(latest.messages));
+      }
+      setStorageReady(true);
+    });
+    return () => { active = false; };
+  }, [activationTarget]);
+
+  useEffect(() => {
+    const host = activationTarget;
+    host.dataset.contextlayerTheme = settings.theme;
+    host.dataset.contextlayerTextSize = settings.textSize;
+    host.dataset.contextlayerButtonSize = settings.buttonSize;
+    host.dataset.contextlayerButtonPosition = settings.buttonPosition;
+    host.style.setProperty("--cl-accent", settings.accentColor);
+    if (storageReady) void saveSettings(settings);
+  }, [activationTarget, settings, storageReady]);
+
+  useEffect(() => {
+    if (!storageReady || !settings.saveHistory || messages.length === 0) return;
+    const session: ChatSession = {
+      id: sessionId,
+      url: activationTarget.ownerDocument.location.href,
+      title: activationTarget.ownerDocument.title || "Current page",
+      updatedAt: Date.now(),
+      messages: messagesForStorage(messages)
+    };
+    void saveChatSession(session).then(setHistory);
+  }, [activationTarget, messages, sessionId, settings.saveHistory, storageReady]);
 
   useEffect(() => {
     const togglePanel = () => setIsOpen((current) => !current);
@@ -152,8 +227,16 @@ export function AssistantWidget({
       if (nextUrl === currentUrl) return;
 
       currentUrl = nextUrl;
+      setPageTitle(activationTarget.ownerDocument.title || "Current page");
       agentSession.invalidatePage();
-      setMessages([]);
+      void loadHistory().then((storedHistory) => {
+        setHistory(storedHistory);
+        const latest = settings.saveHistory
+          ? storedHistory.find((session) => session.url === nextUrl)
+          : undefined;
+        setSessionId(latest?.id ?? crypto.randomUUID());
+        setMessages(latest ? messagesFromStorage(latest.messages) : []);
+      });
       setHasPageModifications(false);
       setErrorMessage(null);
       setStatus("idle");
@@ -169,13 +252,16 @@ export function AssistantWidget({
       pageWindow.removeEventListener("hashchange", detectNavigation);
       pageWindow.clearInterval(intervalId);
     };
-  }, [activationTarget, agentSession]);
+  }, [activationTarget, agentSession, settings.saveHistory]);
 
-  const submitMessage = async () => {
-    const query = draft.trim();
-    if (!query || status === "loading") return;
+  const runQuery = async (rawQuery: string, appendUserMessage: boolean) => {
+    const query = rawQuery.trim();
+    if (!query || requestInFlightRef.current) return;
+    requestInFlightRef.current = true;
 
-    setMessages((current) => [...current, createMessage(query, "user")]);
+    if (appendUserMessage) {
+      setMessages((current) => [...current, createMessage(query, "user")]);
+    }
     setDraft("");
     setErrorMessage(null);
     setHasPageModifications(false);
@@ -189,12 +275,12 @@ export function AssistantWidget({
         executionResults,
         hasPageModifications: hasChanges,
         recoveredFromStale
-      } = await agentSession.submit(query, {
+      } = await agentSession.submit(queryWithPreferences(query, settings), {
         onProgress: (progress) => setActivityMessage(PROGRESS_MESSAGES[progress])
       });
       setMessages((current) => [
         ...current,
-        createAssistantMessage(response, executionResults)
+        createAssistantMessage(response, executionResults, query)
       ]);
       setHasPageModifications(hasChanges);
       setPageNotice(
@@ -211,8 +297,12 @@ export function AssistantWidget({
       }
       setErrorMessage(readableError(error));
       setStatus("error");
+    } finally {
+      requestInFlightRef.current = false;
     }
   };
+
+  const submitMessage = async () => runQuery(draft, true);
 
   const handleReferenceClick = async (messageId: string, elementId: string) => {
     try {
@@ -267,11 +357,41 @@ export function AssistantWidget({
   };
 
   const handleInputKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (event.key === "Enter" && !event.shiftKey) {
+    if (event.key === "Enter" && !event.shiftKey && settings.enterSends) {
       event.preventDefault();
       void submitMessage();
     }
   };
+
+  const handleSettingsChange = (next: UserSettings) => setSettings(next);
+  const handleClearCurrentChat = () => {
+    void deleteChatSession(sessionId).then(setHistory);
+    setMessages([]);
+    setSessionId(crypto.randomUUID());
+    setView("chat");
+  };
+  const handleClearHistory = () => {
+    void clearChatHistory().then(() => setHistory([]));
+  };
+  const handleExport = () => {
+    const text = messages.map((message) => `${message.role === "user" ? "You" : "ContextLayer"}: ${message.text}`).join("\n\n");
+    void navigator.clipboard?.writeText(text);
+  };
+  const handleOpenSession = (session: ChatSession) => {
+    setSessionId(session.url === activationTarget.ownerDocument.location.href
+      ? session.id
+      : crypto.randomUUID());
+    setMessages(messagesFromStorage(session.messages));
+    setView("chat");
+  };
+  const handleDeleteSession = (id: string) => {
+    void deleteChatSession(id).then((next) => {
+      setHistory(next);
+      if (id === sessionId) handleClearCurrentChat();
+    });
+  };
+
+  const suggestions = ["Summarize this page", "Key points", "Explain simply", "Translate"];
 
   return (
     <>
@@ -280,25 +400,22 @@ export function AssistantWidget({
           <header className="contextlayer-header">
             <div className="contextlayer-brand">
               <span className="contextlayer-brand-mark" aria-hidden="true">
-                <Sparkles size={18} strokeWidth={2.2} />
+                <LotusMark />
               </span>
               <div>
                 <h1>ContextLayer</h1>
                 <p><span aria-hidden="true" />{modeLabel}</p>
               </div>
             </div>
-            <button
-              className="contextlayer-icon-button"
-              type="button"
-              aria-label="Reset page changes"
-              title={hasPageModifications ? "Reset page changes" : "No page changes to reset"}
-              disabled={!hasPageModifications || status === "loading"}
-              onClick={handleReset}
-            >
-              <RotateCcw aria-hidden="true" size={18} />
-            </button>
+            <div className="contextlayer-header-actions">
+              <button className="contextlayer-icon-button" type="button" aria-label="Reset page changes" title={hasPageModifications ? "Reset page changes" : "No page changes to reset"} disabled={!hasPageModifications || status === "loading"} onClick={handleReset}><RotateCcw aria-hidden="true" size={18} /></button>
+              <button className={`contextlayer-icon-button${view === "history" ? " is-active" : ""}`} type="button" aria-label="History" title="History" onClick={() => setView(view === "history" ? "chat" : "history")}><Clock3 aria-hidden="true" size={18} /></button>
+              <button className={`contextlayer-icon-button${view === "settings" ? " is-active" : ""}`} type="button" aria-label="Settings" title="Settings" onClick={() => setView(view === "settings" ? "chat" : "settings")}><Settings aria-hidden="true" size={18} /></button>
+              <button className="contextlayer-icon-button" type="button" aria-label="Close" title="Close" onClick={() => setIsOpen(false)}><X aria-hidden="true" size={18} /></button>
+            </div>
           </header>
 
+          {view === "settings" ? <SettingsPanel settings={settings} onChange={handleSettingsChange} onExport={handleExport} onClearChat={handleClearCurrentChat} onClearHistory={handleClearHistory} /> : view === "history" ? <HistoryPanel sessions={history} activeId={sessionId} onOpen={handleOpenSession} onDelete={handleDeleteSession} onClear={handleClearHistory} /> : <>
           <div ref={messagesRef} className="contextlayer-messages" aria-live="polite">
             {pageNotice && (
               <div className="contextlayer-page-state" role="status">
@@ -310,7 +427,7 @@ export function AssistantWidget({
             {messages.length === 0 ? (
               <div className="contextlayer-empty-state">
                 <span className="contextlayer-empty-mark" aria-hidden="true">
-                  <MessageCircle size={30} strokeWidth={1.7} />
+                  <LotusMark />
                 </span>
                 <div>
                   <h2>Ready for this page</h2>
@@ -338,7 +455,7 @@ export function AssistantWidget({
                           onClick={() => void handleReferenceClick(message.id, reference.elementId)}
                         >
                           <LocateFixed aria-hidden="true" size={14} />
-                          <span>{reference.excerpt || reference.elementId}</span>
+                          <span>{reference.excerpt || "Open referenced content"}</span>
                         </button>
                       ))}
                     </div>
@@ -346,32 +463,37 @@ export function AssistantWidget({
 
                   {message.executionResults && message.executionResults.length > 0 && (
                     <div className="contextlayer-results" aria-label="Action results">
-                      {message.executionResults.map((result, index) => (
-                        <div
-                          className={`contextlayer-result contextlayer-result--${result.success ? "success" : "failure"}`}
-                          key={`${result.type}-${index}`}
-                        >
-                          {result.success ? (
-                            <CircleCheck aria-hidden="true" size={14} />
-                          ) : (
-                            <CircleX aria-hidden="true" size={14} />
-                          )}
-                          <div>
-                            <strong>{result.type.replaceAll("_", " ")}</strong>
-                            <span>
-                              {result.success
-                                ? `${result.affectedElementIds.length} element${result.affectedElementIds.length === 1 ? "" : "s"} affected`
-                                : [
-                                    result.affectedElementIds.length > 0
-                                      ? `${result.affectedElementIds.length} element${result.affectedElementIds.length === 1 ? "" : "s"} affected.`
-                                      : "",
-                                    result.failures.map((failure) => failure.message).join(" ")
-                                  ].filter(Boolean).join(" ")}
-                            </span>
+                      {message.executionResults.map((result, index) => {
+                        const presentation = presentActionResult(result);
+                        return (
+                          <div
+                            className={`contextlayer-result contextlayer-result--${presentation.tone}`}
+                            key={`${result.type}-${index}`}
+                          >
+                            {presentation.tone === "success" ? (
+                              <CircleCheck aria-hidden="true" size={14} />
+                            ) : (
+                              <CircleX aria-hidden="true" size={14} />
+                            )}
+                            <div>
+                              <strong>{presentation.label}</strong>
+                              <span>{presentation.summary}</span>
+                              {presentation.detail && <span>{presentation.detail}</span>}
+                            </div>
                           </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
+                  )}
+                  {message.role === "assistant" && (
+                    <MessageActions
+                      text={message.text}
+                      canRetry={Boolean(message.retryQuery)}
+                      disabled={status === "loading"}
+                      onRetry={() => {
+                        if (message.retryQuery) void runQuery(message.retryQuery, false);
+                      }}
+                    />
                   )}
                 </div>
               ))
@@ -392,6 +514,21 @@ export function AssistantWidget({
                 <p>{errorMessage}</p>
               </div>
             )}
+          </div>
+
+          <div className="contextlayer-suggestions" aria-label="Suggested prompts">
+            {suggestions.map((suggestion) => (
+              <button type="button" key={suggestion} onClick={() => {
+                setDraft(suggestion);
+                inputRef.current?.focus();
+              }}>{suggestion}</button>
+            ))}
+          </div>
+
+          <div className="contextlayer-reading" title={pageTitle}>
+            <FileText aria-hidden="true" size={12} />
+            <span>Reading:</span>
+            <strong>{pageTitle}</strong>
           </div>
 
           <form className="contextlayer-composer" onSubmit={handleSubmit}>
@@ -425,6 +562,8 @@ export function AssistantWidget({
               <Send aria-hidden="true" size={18} />
             </button>
           </form>
+          </>}
+
         </section>
       )}
 
@@ -437,7 +576,7 @@ export function AssistantWidget({
           title="Open ContextLayer"
           onClick={() => setIsOpen(true)}
         >
-          <Sparkles aria-hidden="true" size={22} strokeWidth={2} />
+          <LotusMark />
         </button>
       )}
     </>

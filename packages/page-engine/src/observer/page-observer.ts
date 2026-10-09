@@ -42,6 +42,13 @@ export class PageObserver {
     this.listening = false;
   }
 
+  flushPendingChanges(): boolean {
+    const records = this.observer?.takeRecords() ?? [];
+    const changed = records.some((record) => this.isMeaningful(record));
+    if (changed) this.onChange("DOM_MUTATION");
+    return changed;
+  }
+
   private isMeaningful(record: MutationRecord): boolean {
     const target = asElement(record.target);
     if (target && this.isIgnored(target)) return false;

@@ -39,8 +39,9 @@ export function validateGroundedPlan(plan: AgentPlan, candidates: readonly Seman
   if (plan.grounding === "NOT_APPLICABLE") {
     if (
       plan.references.length !== 0 ||
-      plan.actions.length === 0 ||
-      plan.actions.some((action) => action.type !== "RESTORE_ALL")
+      plan.actions.length !== 1 ||
+      plan.actions[0]?.type !== "RESTORE_ALL" ||
+      plan.actions[0].targetElementIds.length !== 0
     ) {
       throw invalidGrounding();
     }
@@ -109,13 +110,26 @@ function compactSupportedPlan(plan: AgentPlan, elements: Map<string, SemanticEle
   }
 
   const keptIds = new Set(kept.map((reference) => reference.elementId));
-  const actions = plan.actions.flatMap((action) => {
+  const normalizedActions = plan.actions.flatMap((action) => {
     if (action.type === "RESTORE_ALL") return [action];
     const targetElementIds = [...new Set(action.targetElementIds
       .map((id) => aliases.get(id))
       .filter((id): id is string => id !== undefined && keptIds.has(id)))];
     return targetElementIds.length > 0 ? [{ ...action, targetElementIds }] : [];
   });
+
+  const actions: AgentPlan["actions"] = [];
+  for (const action of normalizedActions) {
+    const existing = actions.find((candidate) => candidate.type === action.type);
+    if (!existing || action.type === "RESTORE_ALL") {
+      actions.push(action);
+      continue;
+    }
+    existing.targetElementIds = [...new Set([
+      ...existing.targetElementIds,
+      ...action.targetElementIds
+    ])].slice(0, MAX_GROUNDED_REFERENCES);
+  }
 
   return { ...plan, references: kept, actions };
 }

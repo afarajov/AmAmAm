@@ -3,7 +3,9 @@
 The extension shell and isolated chat interface are implemented. It builds a
 Manifest V3 extension that injects a Shadow DOM launcher after a user clicks
 the toolbar action. The panel supports open/close behavior, message entry,
-history presentation, loading/error states and responsive layouts.
+session history, answer copy/rating/retry controls, loading/error states and
+responsive layouts. Only working product controls are exposed: API credentials
+remain server-side and the extension does not render placeholder settings.
 
 The extension uses the real `@contextlayer/page-engine` and communicates with
 the backend through the background service worker. A separately labelled mock
@@ -68,6 +70,24 @@ actions. Empty pages and backend timeouts have separate user-facing states.
 Checkpoint 3 Playwright fixtures cover a nested Instagram-like caption, SPA
 post navigation, repeated queries, stale recovery, backend timeout, and an
 honest no-readable-text result.
+
+## Action lifecycle
+
+The chat keeps the backend plan separate from the browser execution result.
+Every `ActionExecutionResult` is presented with its real affected and failed
+counts for `SCROLL_TO`, `HIGHLIGHT`, `DIM`, `STRIKE`, `HIDE`, `CLEAR_EFFECT`,
+and `RESTORE_ALL`. Raw element IDs and executor messages are never rendered.
+
+Source navigation replaces its previous `HIGHLIGHT` and `SCROLL_TO` status
+instead of appending duplicates. Reset remains a local `RESTORE_ALL`, is
+enabled only while real effects remain, and never calls the backend. A
+synchronous request lock prevents duplicate submissions before React state has
+time to render.
+
+Checkpoint 4 Playwright coverage asserts the actual DOM classes and restored
+state for all effects, partial failure reporting, stale retry limits, route
+changes during a request, malformed responses, backend errors, and duplicate
+submit protection.
 
 Load `apps/extension/dist` as an unpacked extension in Chrome. Open a regular
 HTTP(S) page and click the ContextLayer toolbar action. Restricted browser
