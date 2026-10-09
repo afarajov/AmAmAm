@@ -5,7 +5,10 @@
   "type": "module",
   "workspaces": ["apps/*", "packages/*"],
   "scripts": {
-    "typecheck:contracts": "tsc --noEmit -p packages/shared/tsconfig.json"
+    "typecheck:contracts": "tsc --noEmit -p packages/shared/tsconfig.json",
+    "build": "npm run build --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "check": "npm run typecheck:contracts && npm run build && npm test"
   },
   "devDependencies": {
     "typescript": "^5.8.3"
