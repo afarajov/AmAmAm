@@ -1,4 +1,5 @@
 import type { ApiError } from "@contextlayer/shared";
+import { randomUUID } from "node:crypto";
 import type { ErrorRequestHandler, RequestHandler } from "express";
 import { HttpError } from "../errors/api-error.js";
 import type { Logger } from "../logging/logger.js";
@@ -26,12 +27,13 @@ export function errorHandler(logger: Logger): ErrorRequestHandler {
             : "The request could not be completed.",
       requestId
     };
+    response.locals.errorCode = body.code;
 
     if (!known || status >= 500) {
       logger.error("request_failed", {
         requestId,
         status,
-        error: error instanceof Error ? error.message : "Unknown error"
+        errorCode: body.code
       });
     }
     response.status(status).json(body);
@@ -41,4 +43,3 @@ export function errorHandler(logger: Logger): ErrorRequestHandler {
 function hasStatus(error: unknown, expected: number): boolean {
   return typeof error === "object" && error !== null && "status" in error && error.status === expected;
 }
-import { randomUUID } from "node:crypto";

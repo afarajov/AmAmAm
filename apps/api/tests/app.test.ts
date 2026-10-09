@@ -25,14 +25,21 @@ const agentRequest: AgentRequest = {
   }
 };
 
-function appWith(agentService: AgentService) {
+function appWith(
+  agentService: AgentService,
+  options: { configured?: boolean; maxSnapshotTextCharacters?: number } = {}
+) {
   return createApp({
     config: {
       jsonBodyLimit: "32kb",
-      corsAllowedOrigins: ["chrome-extension://contextlayer-test"]
+      corsAllowedOrigins: ["chrome-extension://contextlayer-test"],
+      ...(options.maxSnapshotTextCharacters === undefined
+        ? {}
+        : { maxSnapshotTextCharacters: options.maxSnapshotTextCharacters })
     },
     logger,
-    agentService
+    agentService,
+    readiness: { configured: options.configured ?? true }
   });
 }
 
@@ -43,6 +50,17 @@ describe("API foundation", () => {
     expect(response.body).toEqual({ status: "ok", service: "contextlayer-api" });
     expect(response.headers["x-powered-by"]).toBeUndefined();
     expect(response.headers["x-request-id"]).toMatch(/^[0-9a-f-]{36}$/);
+  });
+
+  it("reports readiness without making a model request", async () => {
+    const query = vi.fn();
+    const ready = await request(appWith({ query })).get("/ready");
+    const unavailable = await request(appWith({ query }, { configured: false })).get("/ready");
+    expect(ready.status).toBe(200);
+    expect(ready.body).toEqual({ status: "ready", service: "contextlayer-api" });
+    expect(unavailable.status).toBe(503);
+    expect(unavailable.body).toEqual({ status: "not_ready", service: "contextlayer-api" });
+    expect(query).not.toHaveBeenCalled();
   });
 
   it("answers an allowed extension CORS preflight", async () => {
@@ -65,6 +83,18 @@ describe("API foundation", () => {
 
     expect(response.status).toBe(403);
     expect(response.headers["access-control-allow-origin"]).toBeUndefined();
+    expect(response.body.code).toBe("INVALID_REQUEST");
+  });
+
+  it("rejects an actual request from an unlisted origin before a paid service call", async () => {
+    const query = vi.fn();
+    const response = await request(appWith({ query }))
+      .post("/api/agent/query")
+      .set("Origin", "https://untrusted.example")
+      .send(agentRequest);
+    expect(response.status).toBe(403);
+    expect(response.body.code).toBe("INVALID_REQUEST");
+    expect(query).not.toHaveBeenCalled();
   });
 
   it("forwards an AgentRequest to the injected service", async () => {
@@ -128,6 +158,46 @@ describe("API foundation", () => {
     expect(response.status).toBe(413);
     expect(response.body.code).toBe("CONTEXT_TOO_LARGE");
     expect(query).not.toHaveBeenCalled();
+  });
+
+  it("rejects a snapshot over the configured text budget before the service runs", async () => {
+    const query = vi.fn();
+    const response = await request(appWith({ query }, { maxSnapshotTextCharacters: 1_000 }))
+      .post("/api/agent/query")
+      .send({
+        ...agentRequest,
+        page: {
+          ...agentRequest.page,
+          elements: [{
+            id: "node-00001",
+            kind: "paragraph",
+            text: "x".repeat(1_001),
+            tagName: "P",
+            visible: true
+          }]
+        }
+      });
+    expect(response.status).toBe(413);
+    expect(response.body.code).toBe("CONTEXT_TOO_LARGE");
+    expect(query).not.toHaveBeenCalled();
+  });
+
+  it("logs only a safe error code for unexpected failures", async () => {
+    const secret = "provider-secret-payload";
+    const localLogger: Logger = {
+      debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn()
+    };
+    const app = createApp({
+      config: { jsonBodyLimit: "32kb", corsAllowedOrigins: [] },
+      logger: localLogger,
+      agentService: { query: async () => { throw new Error(secret); } }
+    });
+    const response = await request(app).post("/api/agent/query").send(agentRequest);
+    expect(response.status).toBe(500);
+    expect(response.body.code).toBe("INTERNAL_ERROR");
+    const serializedLogs = JSON.stringify(vi.mocked(localLogger.error).mock.calls);
+    expect(serializedLogs).not.toContain(secret);
+    expect(serializedLogs).toContain("INTERNAL_ERROR");
   });
 
   it("rejects an invalid service response before sending it to the client", async () => {
