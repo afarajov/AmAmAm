@@ -5,10 +5,8 @@ import {
   Clock3,
   FileText,
   LocateFixed,
-  Plus,
   RotateCcw,
   Send,
-  Settings,
   X
 } from "lucide-react";
 import { FormEvent, KeyboardEvent, useEffect, useId, useRef, useState } from "react";
@@ -20,7 +18,7 @@ import type {
   AgentSessionProgress
 } from "../integration/agentSession";
 import { presentActionResult } from "./actionPresentation";
-import { HistoryPanel, MessageActions, SettingsPanel } from "./DemoPanels";
+import { HistoryPanel, MessageActions } from "./ChatUtilities";
 import { LotusMark } from "./LotusMark";
 import type { ChatMessage, RequestStatus } from "./types";
 
@@ -74,7 +72,8 @@ function createMessage(text: string, role: ChatMessage["role"]): ChatMessage {
 
 function createAssistantMessage(
   response: AgentResponse,
-  executionResults: ActionExecutionResult[]
+  executionResults: ActionExecutionResult[],
+  retryQuery: string
 ): ChatMessage {
   const failedResults = executionResults.filter((result) => !result.success);
   const successfulResults = executionResults.filter((result) => result.success);
@@ -94,6 +93,7 @@ function createAssistantMessage(
     id: crypto.randomUUID(),
     role: "assistant",
     text,
+    retryQuery,
     references: response.references,
     executionResults
   };
@@ -118,7 +118,7 @@ export function AssistantWidget({
   modeLabel
 }: AssistantWidgetProps) {
   const [isOpen, setIsOpen] = useState(false);
-  const [view, setView] = useState<"chat" | "history" | "settings">("chat");
+  const [view, setView] = useState<"chat" | "history">("chat");
   const [draft, setDraft] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [status, setStatus] = useState<RequestStatus>("idle");
@@ -188,12 +188,14 @@ export function AssistantWidget({
     };
   }, [activationTarget, agentSession]);
 
-  const submitMessage = async () => {
-    const query = draft.trim();
+  const runQuery = async (rawQuery: string, appendUserMessage: boolean) => {
+    const query = rawQuery.trim();
     if (!query || requestInFlightRef.current) return;
     requestInFlightRef.current = true;
 
-    setMessages((current) => [...current, createMessage(query, "user")]);
+    if (appendUserMessage) {
+      setMessages((current) => [...current, createMessage(query, "user")]);
+    }
     setDraft("");
     setErrorMessage(null);
     setHasPageModifications(false);
@@ -212,7 +214,7 @@ export function AssistantWidget({
       });
       setMessages((current) => [
         ...current,
-        createAssistantMessage(response, executionResults)
+        createAssistantMessage(response, executionResults, query)
       ]);
       setHasPageModifications(hasChanges);
       setPageNotice(
@@ -233,6 +235,8 @@ export function AssistantWidget({
       requestInFlightRef.current = false;
     }
   };
+
+  const submitMessage = async () => runQuery(draft, true);
 
   const handleReferenceClick = async (messageId: string, elementId: string) => {
     try {
@@ -310,14 +314,13 @@ export function AssistantWidget({
               </div>
             </div>
             <div className="contextlayer-header-actions">
-              <button className="contextlayer-icon-button" type="button" aria-label="Reset page changes" title={hasPageModifications ? "Reset page changes" : "No page changes to reset"} disabled={!hasPageModifications || status === "loading"} onClick={handleReset}><Plus aria-hidden="true" size={18} /></button>
+              <button className="contextlayer-icon-button" type="button" aria-label="Reset page changes" title={hasPageModifications ? "Reset page changes" : "No page changes to reset"} disabled={!hasPageModifications || status === "loading"} onClick={handleReset}><RotateCcw aria-hidden="true" size={18} /></button>
               <button className={`contextlayer-icon-button${view === "history" ? " is-active" : ""}`} type="button" aria-label="History" title="History" onClick={() => setView(view === "history" ? "chat" : "history")}><Clock3 aria-hidden="true" size={18} /></button>
-              <button className={`contextlayer-icon-button${view === "settings" ? " is-active" : ""}`} type="button" aria-label="Settings" title="Settings" onClick={() => setView(view === "settings" ? "chat" : "settings")}><Settings aria-hidden="true" size={18} /></button>
               <button className="contextlayer-icon-button" type="button" aria-label="Close" title="Close" onClick={() => setIsOpen(false)}><X aria-hidden="true" size={18} /></button>
             </div>
           </header>
 
-          {view === "settings" ? <SettingsPanel /> : view === "history" ? <HistoryPanel messages={messages} /> : <>
+          {view === "history" ? <HistoryPanel messages={messages} /> : <>
           <div ref={messagesRef} className="contextlayer-messages" aria-live="polite">
             {pageNotice && (
               <div className="contextlayer-page-state" role="status">
@@ -357,7 +360,7 @@ export function AssistantWidget({
                           onClick={() => void handleReferenceClick(message.id, reference.elementId)}
                         >
                           <LocateFixed aria-hidden="true" size={14} />
-                          <span>{reference.excerpt || reference.elementId}</span>
+                          <span>{reference.excerpt || "Open referenced content"}</span>
                         </button>
                       ))}
                     </div>
@@ -387,7 +390,16 @@ export function AssistantWidget({
                       })}
                     </div>
                   )}
-                  {message.role === "assistant" && <MessageActions text={message.text} />}
+                  {message.role === "assistant" && (
+                    <MessageActions
+                      text={message.text}
+                      canRetry={Boolean(message.retryQuery)}
+                      disabled={status === "loading"}
+                      onRetry={() => {
+                        if (message.retryQuery) void runQuery(message.retryQuery, false);
+                      }}
+                    />
+                  )}
                 </div>
               ))
             )}

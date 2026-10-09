@@ -3,7 +3,9 @@
 The extension shell and isolated chat interface are implemented. It builds a
 Manifest V3 extension that injects a Shadow DOM launcher after a user clicks
 the toolbar action. The panel supports open/close behavior, message entry,
-history presentation, loading/error states and responsive layouts.
+session history, answer copy/rating/retry controls, loading/error states and
+responsive layouts. Only working product controls are exposed: API credentials
+remain server-side and the extension does not render placeholder settings.
 
 The extension uses the real `@contextlayer/page-engine` and communicates with
 the backend through the background service worker. A separately labelled mock

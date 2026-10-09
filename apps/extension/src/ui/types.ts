@@ -9,6 +9,7 @@ export interface ChatMessage {
   id: string;
   role: MessageRole;
   text: string;
+  retryQuery?: string;
   references?: AgentReference[];
   executionResults?: ActionExecutionResult[];
 }

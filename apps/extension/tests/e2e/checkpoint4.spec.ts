@@ -123,6 +123,16 @@ test("double submit produces one request lifecycle", async ({ page }) => {
   await expect(page.locator(".contextlayer-message--user")).toHaveCount(1);
 });
 
+test("retry runs the same request again without duplicating the user message", async ({ page }) => {
+  await openFixture(page);
+  await submit(page, "Factual query");
+
+  await page.getByRole("button", { name: "Try answer again" }).click();
+
+  await expect(page.getByText("This is a grounded factual answer.")).toHaveCount(2);
+  await expect(page.locator(".contextlayer-message--user")).toHaveCount(1);
+});
+
 test("malformed response is rejected before any DOM action", async ({ page }) => {
   await openFixture(page);
   await submit(page, "Simulate malformed response");
