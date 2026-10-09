@@ -1,5 +1,6 @@
 import type { AgentRequest, AgentResponse } from "@contextlayer/shared";
 import { HttpError } from "../errors/api-error.js";
+import type { SemanticElement } from "@contextlayer/shared";
 import { selectCandidateElements } from "../retrieval/select-candidates.js";
 import type { AgentPlan, AgentPlanner } from "../ai/agent-planner.js";
 import { validateGroundedPlan } from "../validation/grounding.js";
@@ -9,6 +10,14 @@ export interface AgentService {
   query(request: AgentRequest): Promise<AgentResponse>;
 }
 
+export type CandidateSelector = (
+  query: string,
+  elements: SemanticElement[]
+) => Promise<SemanticElement[]>;
+
+const lexicalCandidateSelector: CandidateSelector = async (query, elements) =>
+  selectCandidateElements(query, elements);
+
 /** Production-safe default: never pretends that AI reasoning happened. */
 export class UnavailableAgentService implements AgentService {
   async query(_request: AgentRequest): Promise<AgentResponse> {
@@ -17,10 +26,13 @@ export class UnavailableAgentService implements AgentService {
 }
 
 export class PlanningAgentService implements AgentService {
-  constructor(private readonly planner: AgentPlanner) {}
+  constructor(
+    private readonly planner: AgentPlanner,
+    private readonly candidateSelector: CandidateSelector = lexicalCandidateSelector
+  ) {}
 
   async query(request: AgentRequest): Promise<AgentResponse> {
-    const candidates = selectCandidateElements(request.query, request.page.elements);
+    const candidates = await this.candidateSelector(request.query, request.page.elements);
     const rawPlan: AgentPlan = await this.planner.plan({
       query: request.query,
       pageTitle: request.page.title,

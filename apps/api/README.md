@@ -12,6 +12,11 @@ Set `CORS_ALLOWED_ORIGINS` to the extension origin shown by Chrome, for example
 `chrome-extension://abcdefghijklmnopqrstuvwxyzabcdef`. Separate multiple local
 extension origins with commas.
 
+Candidate retrieval uses `OPENAI_EMBEDDING_MODEL` (default:
+`text-embedding-3-small`) so queries and page content can be matched across
+languages before the grounded planning step. Embedding inputs are batched and
+bounded; the API key remains server-side.
+
 ## Grounding guarantees
 
 - factual answers require at least one reference to a supplied candidate element;
@@ -26,6 +31,7 @@ extension origins with commas.
 - `POST /api/agent/query` and `GET /health`;
 - request validation using `@contextlayer/shared`;
 - bounded first-stage retrieval;
+- multilingual semantic candidate ranking;
 - LLM provider adapter and server-side credentials;
 - prompt-injection-resistant system instructions;
 - structured action planning;
