@@ -23,6 +23,8 @@ inputs are batched and bounded; the API key remains server-side.
 - factual answers require at least one reference to a supplied candidate element;
 - every reference excerpt must be a real substring of that element's text;
 - every targeted action ID must also have a supporting reference;
+- duplicate and broad parent references collapse to the narrowest grounded element;
+- responses contain at most five distinct evidence references and prioritize action targets;
 - missing evidence produces a deterministic, language-aware `NOT_FOUND` response;
 - page text is passed as untrusted data and cannot change system instructions;
 - action responses describe a proposed browser operation, never a completed one.
