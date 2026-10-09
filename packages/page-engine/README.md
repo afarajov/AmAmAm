@@ -1,29 +1,54 @@
-# Page engine workspace — Developer 2
+# Page engine — Developer 2
 
-No DOM implementation exists yet.
+Reusable semantic DOM extraction and reversible action execution for a normal
+browser `Document`. The package has no Chrome API, backend, LLM, or UI coupling.
 
-## Responsibilities
+## Public API
 
-- capture a bounded `PageSnapshot`;
-- maintain document-local `WeakMap<Element, string>` and `Map<string, Element>`;
-- identify semantic blocks without redundant parent/child text;
-- exclude UI, hidden content, form values and sensitive data;
-- validate current page/snapshot before actions;
-- execute allow-listed actions deterministically;
-- track only engine-owned effects and restore them safely;
-- return per-target execution results.
+```ts
+import { createPageEngine } from "@contextlayer/page-engine";
 
-## Planned structure
+const engine = createPageEngine(document);
+const snapshot = engine.scan();
 
-```text
-src/
-├── extraction/   # candidate discovery and normalization
-├── mapping/      # page identity and live element maps
-├── actions/      # safe reversible executor
-├── observer/     # optional debounced dynamic refresh
-└── index.ts      # small public facade
-tests/
-└── fixtures/
+const results = engine.executeActions({
+  pageId: snapshot.pageId,
+  snapshotVersion: snapshot.snapshotVersion,
+  actions: [
+    {
+      type: "HIGHLIGHT",
+      targetElementIds: [snapshot.elements[0].id],
+    },
+  ],
+});
 ```
 
-The package may depend on `@contextlayer/shared`. It must not call the API, parse natural language or render UI.
+`SemanticPageEngine` implements the `PageEngine` contract exported by
+`@contextlayer/shared`. A scan creates document-local `node-00001` IDs and
+keeps live `Element` references private.
+
+Supported actions are `SCROLL_TO`, `HIGHLIGHT`, `DIM`, `STRIKE`, `HIDE`,
+`CLEAR_EFFECT`, and `RESTORE_ALL`. Effects use engine-owned classes and
+overlays and are safe to repeat and remove.
+
+Optional extraction limits can be passed to `createPageEngine(document,
+options)`. Defaults are 200 blocks, 30,000 total text characters, and 2,000
+characters per block. Client UI can be excluded with `data-contextlayer-ui`.
+
+## Validation
+
+From the repository root:
+
+```powershell
+npm.cmd run typecheck --workspace @contextlayer/page-engine
+npm.cmd test --workspace @contextlayer/page-engine
+```
+
+The extractor intentionally excludes hidden content, form values, scripts,
+styles, and extension UI. It uses heuristic card/comment detection; canvas,
+closed shadow roots, cross-origin frames, and virtualized off-screen content
+remain outside the MVP.
+
+The unit suite uses real HTML fixtures from `tests/fixtures/`, including visible
+content, hidden descendants, sensitive form controls, links, and client UI that
+must be excluded from the snapshot.
