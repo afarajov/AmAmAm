@@ -17,6 +17,7 @@ export type CandidateSelector = (
 
 const lexicalCandidateSelector: CandidateSelector = async (query, elements) =>
   selectCandidateElements(query, elements);
+const MAX_GROUNDED_PLAN_ATTEMPTS = 2;
 
 /** Production-safe default: never pretends that AI reasoning happened. */
 export class UnavailableAgentService implements AgentService {
@@ -33,13 +34,25 @@ export class PlanningAgentService implements AgentService {
 
   async query(request: AgentRequest): Promise<AgentResponse> {
     const candidates = await this.candidateSelector(request.query, request.page.elements);
-    const rawPlan: AgentPlan = await this.planner.plan({
+    const planInput = {
       query: request.query,
       pageTitle: request.page.title,
       pageUrl: request.page.url,
       candidates
-    });
-    const plan = validateGroundedPlan(rawPlan, candidates);
+    };
+    let plan: AgentPlan | undefined;
+    let validationError: unknown;
+    for (let attempt = 0; attempt < MAX_GROUNDED_PLAN_ATTEMPTS; attempt += 1) {
+      const rawPlan = await this.planner.plan(planInput);
+      try {
+        plan = validateGroundedPlan(rawPlan, candidates);
+        break;
+      } catch (error) {
+        validationError = error;
+        if (!(error instanceof HttpError) || error.code !== "MODEL_ERROR") throw error;
+      }
+    }
+    if (plan === undefined) throw validationError;
 
     return {
       requestId: request.requestId,

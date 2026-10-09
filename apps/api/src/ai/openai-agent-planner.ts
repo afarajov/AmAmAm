@@ -2,6 +2,7 @@ import OpenAI from "openai";
 import { zodTextFormat } from "openai/helpers/zod";
 import { z } from "zod";
 import { HttpError } from "../errors/api-error.js";
+import { mapOpenAIProviderError } from "./provider-error.js";
 import type { AgentPlan, AgentPlanInput, AgentPlanner } from "./agent-planner.js";
 
 const actionTypeSchema = z.enum([
@@ -83,14 +84,7 @@ export class OpenAIResponsesPlanner implements AgentPlanner {
         }))
       };
     } catch (error) {
-      if (error instanceof HttpError) throw error;
-      const status = typeof error === "object" && error !== null && "status" in error
-        ? Number(error.status)
-        : undefined;
-      const name = error instanceof Error ? error.name : "";
-      if (status === 429) throw new HttpError(429, "RATE_LIMITED", "The AI provider rate limit was reached.");
-      if (name.includes("Timeout")) throw new HttpError(504, "MODEL_TIMEOUT", "The AI provider timed out.");
-      throw new HttpError(502, "MODEL_ERROR", "The AI provider request failed.");
+      throw mapOpenAIProviderError(error);
     }
   }
 }

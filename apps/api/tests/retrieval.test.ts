@@ -95,4 +95,23 @@ describe("candidate retrieval", () => {
     expect(first.map((element) => element.id)).toEqual(["node-00001", "node-00002"]);
     expect(second.map((element) => element.id)).toEqual(first.map((element) => element.id));
   });
+
+  it("keeps the selected context inside the planner character budget", async () => {
+    const largeElements: SemanticElement[] = Array.from({ length: 80 }, (_, index) => ({
+      id: `node-${String(index + 1).padStart(5, "0")}`,
+      kind: "paragraph",
+      text: `${String(index).padStart(4, "0")} ${"bounded content ".repeat(70)}`,
+      tagName: "P",
+      visible: true
+    }));
+    const provider: EmbeddingProvider = {
+      embed: async (inputs) => inputs.map(() => [1, 0])
+    };
+
+    const selected = await selectSemanticCandidateElements("bounded", largeElements, provider);
+    const totalCharacters = selected.reduce((total, element) => total + element.text.length, 0);
+
+    expect(totalCharacters).toBeLessThanOrEqual(30_000);
+    expect(selected.length).toBeLessThan(80);
+  });
 });

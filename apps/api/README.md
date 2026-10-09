@@ -41,6 +41,11 @@ inputs are batched and bounded; the API key remains server-side.
 - response schema and element-ID validation;
 - timeouts, limits, errors, logging and tests.
 
+The OpenAI SDK performs the configured transport retry. ContextLayer adds only
+one application-level retry when a syntactically valid plan fails grounding;
+rate limits and timeouts are returned immediately as `RATE_LIMITED` and
+`MODEL_TIMEOUT` rather than multiplying provider retries.
+
 ## Structure
 
 ```text

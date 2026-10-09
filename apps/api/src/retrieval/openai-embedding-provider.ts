@@ -1,4 +1,5 @@
 import OpenAI from "openai";
+import { mapOpenAIProviderError } from "../ai/provider-error.js";
 import type { EmbeddingProvider } from "./select-candidates.js";
 
 export class OpenAIEmbeddingProvider implements EmbeddingProvider {
@@ -13,14 +14,18 @@ export class OpenAIEmbeddingProvider implements EmbeddingProvider {
   }
 
   async embed(inputs: string[]): Promise<number[][]> {
-    const response = await this.client.embeddings.create({
-      model: this.model,
-      input: inputs,
-      encoding_format: "float",
-      dimensions: 512
-    });
-    return response.data
-      .sort((left, right) => left.index - right.index)
-      .map((item) => item.embedding);
+    try {
+      const response = await this.client.embeddings.create({
+        model: this.model,
+        input: inputs,
+        encoding_format: "float",
+        dimensions: 512
+      });
+      return response.data
+        .sort((left, right) => left.index - right.index)
+        .map((item) => item.embedding);
+    } catch (error) {
+      throw mapOpenAIProviderError(error);
+    }
   }
 }
