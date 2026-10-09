@@ -1,7 +1,8 @@
+import { createPageEngine } from "@contextlayer/page-engine";
+
 import { ChromeAgentGateway } from "../adapters/ChromeAgentGateway";
 import { createAgentSession, type AgentSession } from "../integration/agentSession";
-import { createMockSession } from "../mocks/createMockSession";
-import { MockPageEngine } from "../mocks/MockPageEngine";
+import { MockAgentGateway } from "../mocks/MockAgentGateway";
 
 export interface ExtensionRuntime {
   agentSession: AgentSession;
@@ -9,10 +10,12 @@ export interface ExtensionRuntime {
 }
 
 export function createRuntime(document: Document): ExtensionRuntime {
+  const pageEngine = createPageEngine(document);
+
   if (import.meta.env.MODE === "api") {
     return {
       agentSession: createAgentSession(
-        new MockPageEngine(document),
+        pageEngine,
         new ChromeAgentGateway()
       ),
       modeLabel: "API mode"
@@ -20,7 +23,7 @@ export function createRuntime(document: Document): ExtensionRuntime {
   }
 
   return {
-    agentSession: createMockSession(document),
+    agentSession: createAgentSession(pageEngine, new MockAgentGateway()),
     modeLabel: "Mock mode"
   };
 }
