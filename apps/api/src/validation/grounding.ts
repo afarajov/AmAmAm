@@ -4,6 +4,7 @@ import { HttpError } from "../errors/api-error.js";
 
 const invalidGrounding = () =>
   new HttpError(502, "MODEL_ERROR", "The AI pipeline returned an ungrounded response.");
+const MAX_GROUNDED_REFERENCES = 5;
 
 export function normalizeEvidence(value: string): string {
   return value.normalize("NFKC").replace(/\s+/gu, " ").trim().toLocaleLowerCase();
@@ -64,5 +65,72 @@ export function validateGroundedPlan(plan: AgentPlan, candidates: readonly Seman
     if (action.targetElementIds.some((id) => !referencedIds.has(id))) throw invalidGrounding();
   }
 
-  return { ...plan, references };
+  return compactSupportedPlan({ ...plan, references }, elements);
+}
+
+function compactSupportedPlan(plan: AgentPlan, elements: Map<string, SemanticElement>): AgentPlan {
+  const targetedIds = new Set(
+    plan.actions.flatMap((action) => action.type === "RESTORE_ALL" ? [] : action.targetElementIds)
+  );
+  const prioritized = [
+    ...plan.references.filter((reference) => targetedIds.has(reference.elementId)),
+    ...plan.references.filter((reference) => !targetedIds.has(reference.elementId))
+  ];
+  const kept: AgentPlan["references"] = [];
+  const aliases = new Map<string, string>();
+
+  for (const reference of prioritized) {
+    if (aliases.has(reference.elementId)) continue;
+    const element = elements.get(reference.elementId)!;
+    const redundantIndex = kept.findIndex((candidate) =>
+      referencesOverlap(element, elements.get(candidate.elementId)!)
+    );
+
+    if (redundantIndex === -1) {
+      if (kept.length < MAX_GROUNDED_REFERENCES) {
+        kept.push(reference);
+        aliases.set(reference.elementId, reference.elementId);
+      }
+      continue;
+    }
+
+    const existing = kept[redundantIndex]!;
+    const existingElement = elements.get(existing.elementId)!;
+    if (isMoreSpecific(element, existingElement)) {
+      kept[redundantIndex] = reference;
+      for (const [source, target] of aliases) {
+        if (target === existing.elementId) aliases.set(source, reference.elementId);
+      }
+      aliases.set(existing.elementId, reference.elementId);
+      aliases.set(reference.elementId, reference.elementId);
+    } else {
+      aliases.set(reference.elementId, existing.elementId);
+    }
+  }
+
+  const keptIds = new Set(kept.map((reference) => reference.elementId));
+  const actions = plan.actions.flatMap((action) => {
+    if (action.type === "RESTORE_ALL") return [action];
+    const targetElementIds = [...new Set(action.targetElementIds
+      .map((id) => aliases.get(id))
+      .filter((id): id is string => id !== undefined && keptIds.has(id)))];
+    return targetElementIds.length > 0 ? [{ ...action, targetElementIds }] : [];
+  });
+
+  return { ...plan, references: kept, actions };
+}
+
+function referencesOverlap(left: SemanticElement, right: SemanticElement): boolean {
+  if (left.id === right.id || left.parentId === right.id || right.parentId === left.id) return true;
+  const leftText = normalizeEvidence(left.text);
+  const rightText = normalizeEvidence(right.text);
+  if (leftText === rightText) return true;
+  if (Math.min(leftText.length, rightText.length) < 32) return false;
+  return leftText.includes(rightText) || rightText.includes(leftText);
+}
+
+function isMoreSpecific(candidate: SemanticElement, existing: SemanticElement): boolean {
+  if (candidate.parentId === existing.id) return true;
+  if (existing.parentId === candidate.id) return false;
+  return normalizeEvidence(candidate.text).length < normalizeEvidence(existing.text).length;
 }

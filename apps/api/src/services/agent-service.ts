@@ -1,5 +1,6 @@
 import type { AgentRequest, AgentResponse } from "@contextlayer/shared";
 import { HttpError } from "../errors/api-error.js";
+import type { SemanticElement } from "@contextlayer/shared";
 import { selectCandidateElements } from "../retrieval/select-candidates.js";
 import type { AgentPlan, AgentPlanner } from "../ai/agent-planner.js";
 import { validateGroundedPlan } from "../validation/grounding.js";
@@ -9,6 +10,15 @@ export interface AgentService {
   query(request: AgentRequest): Promise<AgentResponse>;
 }
 
+export type CandidateSelector = (
+  query: string,
+  elements: SemanticElement[]
+) => Promise<SemanticElement[]>;
+
+const lexicalCandidateSelector: CandidateSelector = async (query, elements) =>
+  selectCandidateElements(query, elements);
+const MAX_GROUNDED_PLAN_ATTEMPTS = 2;
+
 /** Production-safe default: never pretends that AI reasoning happened. */
 export class UnavailableAgentService implements AgentService {
   async query(_request: AgentRequest): Promise<AgentResponse> {
@@ -17,17 +27,32 @@ export class UnavailableAgentService implements AgentService {
 }
 
 export class PlanningAgentService implements AgentService {
-  constructor(private readonly planner: AgentPlanner) {}
+  constructor(
+    private readonly planner: AgentPlanner,
+    private readonly candidateSelector: CandidateSelector = lexicalCandidateSelector
+  ) {}
 
   async query(request: AgentRequest): Promise<AgentResponse> {
-    const candidates = selectCandidateElements(request.query, request.page.elements);
-    const rawPlan: AgentPlan = await this.planner.plan({
+    const candidates = await this.candidateSelector(request.query, request.page.elements);
+    const planInput = {
       query: request.query,
       pageTitle: request.page.title,
       pageUrl: request.page.url,
       candidates
-    });
-    const plan = validateGroundedPlan(rawPlan, candidates);
+    };
+    let plan: AgentPlan | undefined;
+    let validationError: unknown;
+    for (let attempt = 0; attempt < MAX_GROUNDED_PLAN_ATTEMPTS; attempt += 1) {
+      const rawPlan = await this.planner.plan(planInput);
+      try {
+        plan = validateGroundedPlan(rawPlan, candidates);
+        break;
+      } catch (error) {
+        validationError = error;
+        if (!(error instanceof HttpError) || error.code !== "MODEL_ERROR") throw error;
+      }
+    }
+    if (plan === undefined) throw validationError;
 
     return {
       requestId: request.requestId,
