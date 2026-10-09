@@ -36,7 +36,7 @@ Rules:
 
 ## Current state
 
-Only the workspace skeleton, canonical contract package, architectural documentation, and package boundaries exist. Package manifests intentionally omit implementation dependencies and runnable build/dev/test commands; each owner adds those within their area.
+Only the workspace skeleton, canonical [`shared/types.ts`](shared/types.ts) contract, architectural documentation, and package boundaries exist. Package manifests intentionally omit implementation dependencies and runnable build/dev/test commands; each owner adds those within their area.
 
 The only current validation command is:
 

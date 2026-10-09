@@ -36,9 +36,9 @@ The webpage and the LLM are both untrusted.
 
 ## Modules
 
-### `packages/shared`
+### `shared/types.ts` and `packages/shared`
 
-Canonical transport types and runtime schemas. It owns the vocabulary, not application behavior.
+`shared/types.ts` is the authoritative transport contract. `packages/shared` only supplies the workspace import path `@contextlayer/shared`. Runtime validation belongs at trust boundaries and must remain compatible with these types.
 
 ### `apps/api`
 

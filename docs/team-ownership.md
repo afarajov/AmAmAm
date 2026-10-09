@@ -4,7 +4,7 @@
 
 Owns:
 
-- `packages/shared/**`
+- `shared/types.ts` and `packages/shared/**`
 - `apps/api/**`
 - API and model contracts
 - intent interpretation and multilingual behavior

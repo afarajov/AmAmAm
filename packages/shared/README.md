@@ -1,6 +1,6 @@
 # Shared contracts — Developer 1
 
-This is the only implemented package in the architecture foundation. It defines the serializable types and Zod schemas required for parallel development.
+This package provides the stable `@contextlayer/shared` import path. It re-exports the serializable TypeScript contract from `/shared/types.ts` and contains no application behavior.
 
 Rules:
 

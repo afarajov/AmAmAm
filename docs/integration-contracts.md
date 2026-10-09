@@ -1,6 +1,6 @@
 # Integration contracts
 
-The executable source of truth is `packages/shared/src/index.ts`. This document explains semantics that TypeScript alone cannot express.
+The executable source of truth is `shared/types.ts`. `packages/shared/src/index.ts` is only a re-export. This document explains semantics that TypeScript alone cannot express.
 
 All snapshots currently carry `contractVersion: "1"`. Requests and responses share a UUID `requestId` for correlation across extension, API logs and error reports.
 
@@ -41,8 +41,6 @@ Recommended errors:
 - `HIDE`: temporarily collapse only a safe semantic block.
 - `RESTORE_ALL`: remove every page-engine-owned effect.
 - `CLEAR_EFFECT`: remove page-engine effects from specified targets.
-- `OPEN_LINK`: allowed only after explicit user intent and URL validation.
-
 The LLM proposes actions. The page engine decides whether they are executable.
 
 ## Serialization boundary
