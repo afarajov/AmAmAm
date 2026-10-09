@@ -138,10 +138,10 @@ describe("AgentSession with the semantic page engine", () => {
     const referenceResult = await session.scrollToReference(
       result.response.references![0]!.elementId
     );
-    expect(referenceResult.executionResults[0]).toMatchObject({
-      type: "SCROLL_TO",
-      success: true
-    });
+    expect(referenceResult.executionResults).toMatchObject([
+      { type: "HIGHLIGHT", success: true },
+      { type: "SCROLL_TO", success: true }
+    ]);
     expect(paragraph.scrollIntoView).toHaveBeenCalledOnce();
     expect(referenceResult.hasPageModifications).toBe(true);
 
@@ -233,11 +233,10 @@ describe("AgentSession with the semantic page engine", () => {
       turn.response.references![0]!.elementId
     );
 
-    expect(result.executionResults).toHaveLength(1);
-    expect(result.executionResults[0]).toMatchObject({
-      type: "SCROLL_TO",
-      success: true
-    });
+    expect(result.executionResults).toMatchObject([
+      { type: "HIGHLIGHT", success: true },
+      { type: "SCROLL_TO", success: true }
+    ]);
     expect(paragraph.scrollIntoView).toHaveBeenCalledOnce();
   });
 });

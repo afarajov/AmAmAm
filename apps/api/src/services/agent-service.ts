@@ -45,6 +45,7 @@ export class PlanningAgentService implements AgentService {
     for (let attempt = 0; attempt < MAX_GROUNDED_PLAN_ATTEMPTS; attempt += 1) {
       const rawPlan = await this.planner.plan(planInput);
       try {
+        validateUserFacingMessage(rawPlan.message);
         plan = validateGroundedPlan(rawPlan, candidates);
         break;
       } catch (error) {
@@ -76,6 +77,12 @@ export class PlanningAgentService implements AgentService {
           }),
       limitations: plan.limitations
     };
+  }
+}
+
+function validateUserFacingMessage(message: string): void {
+  if (/\bnode-\d{5}\b/iu.test(message) || /\belementId\b/iu.test(message)) {
+    throw new HttpError(502, "MODEL_ERROR", "The AI pipeline exposed internal element metadata.");
   }
 }
 

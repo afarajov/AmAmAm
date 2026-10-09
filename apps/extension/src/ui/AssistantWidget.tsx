@@ -222,7 +222,9 @@ export function AssistantWidget({
           ? {
               ...message,
               executionResults: [
-                ...(message.executionResults ?? []),
+                ...(message.executionResults ?? []).filter((executionResult) => (
+                  executionResult.type !== "HIGHLIGHT" && executionResult.type !== "SCROLL_TO"
+                )),
                 ...result.executionResults
               ]
             }

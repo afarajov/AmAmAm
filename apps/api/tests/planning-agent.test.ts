@@ -198,6 +198,33 @@ describe("PlanningAgentService", () => {
     expect(response.references?.[0]?.elementId).toBe("node-00002");
   });
 
+  it("retries when a user-facing answer exposes an internal node ID", async () => {
+    const plan = vi.fn<AgentPlanner["plan"]>()
+      .mockResolvedValueOnce({
+        grounding: "SUPPORTED",
+        message: "The answer is in paragraph node-00002.",
+        references: [{ elementId: "node-00002", excerpt: "Privacy risks" }],
+        actions: [],
+        limitations: []
+      })
+      .mockResolvedValueOnce({
+        grounding: "SUPPORTED",
+        message: "The paragraph describes privacy risks.",
+        references: [{ elementId: "node-00002", excerpt: "Privacy risks" }],
+        actions: [],
+        limitations: []
+      });
+
+    const response = await new PlanningAgentService({ plan }).query({
+      ...request,
+      query: "What does the relevant paragraph say?"
+    });
+
+    expect(plan).toHaveBeenCalledTimes(2);
+    expect(response.message).toBe("The paragraph describes privacy risks.");
+    expect(response.message).not.toContain("node-");
+  });
+
   it("answers from an Instagram-like English caption selected for a Russian query", async () => {
     const instagramRequest: AgentRequest = {
       ...request,

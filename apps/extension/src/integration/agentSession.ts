@@ -240,6 +240,7 @@ export function createAgentSession(
       const previousPage = currentPage;
       const previousElement = previousPage?.elements.find((element) => element.id === elementId);
       const firstAttempt = executeLocalActions([
+        { type: "HIGHLIGHT", targetElementIds: [elementId] },
         { type: "SCROLL_TO", targetElementIds: [elementId] }
       ]);
       if (!hasStaleFailure(firstAttempt.executionResults) || !previousPage || !previousElement) {
@@ -263,6 +264,9 @@ export function createAgentSession(
       currentPage = refreshedPage;
       modifiedElementIds.clear();
       return executeLocalActions([{
+        type: "HIGHLIGHT",
+        targetElementIds: [refreshedElement.id]
+      }, {
         type: "SCROLL_TO",
         targetElementIds: [refreshedElement.id]
       }]);
