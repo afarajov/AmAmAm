@@ -50,6 +50,8 @@ export function validateGroundedPlan(plan: AgentPlan, candidates: readonly Seman
 
   if (plan.references.length === 0) throw invalidGrounding();
 
+  plan = expandHideTargetsToContainers(plan, elements);
+
   const referencedIds = new Set<string>();
   const references = plan.references.map((reference) => {
     const element = elements.get(reference.elementId);
@@ -67,6 +69,51 @@ export function validateGroundedPlan(plan: AgentPlan, candidates: readonly Seman
   }
 
   return compactSupportedPlan({ ...plan, references }, elements);
+}
+
+function expandHideTargetsToContainers(
+  plan: AgentPlan,
+  elements: Map<string, SemanticElement>
+): AgentPlan {
+  const replacements = new Map<string, string>();
+  const actions = plan.actions.map((action) => {
+    if (action.type !== "HIDE") return action;
+    const targetElementIds = [...new Set(action.targetElementIds.map((id) => {
+      const containerId = nearestHideContainer(id, elements);
+      if (containerId !== id) replacements.set(id, containerId);
+      return containerId;
+    }))];
+    return { ...action, targetElementIds };
+  });
+  if (replacements.size === 0) return plan;
+
+  const stillTargeted = new Set(actions.flatMap((action) =>
+    action.type === "RESTORE_ALL" ? [] : action.targetElementIds
+  ));
+  const references = plan.references.filter((reference) =>
+    !replacements.has(reference.elementId) || stillTargeted.has(reference.elementId)
+  );
+  for (const containerId of new Set(replacements.values())) {
+    const element = elements.get(containerId)!;
+    references.push({ elementId: containerId, excerpt: element.text.slice(0, 500) });
+  }
+  return { ...plan, references, actions };
+}
+
+function nearestHideContainer(
+  id: string,
+  elements: Map<string, SemanticElement>
+): string {
+  let element = elements.get(id);
+  const visited = new Set<string>();
+  while (element?.parentId && !visited.has(element.parentId)) {
+    visited.add(element.parentId);
+    const parent = elements.get(element.parentId);
+    if (!parent) break;
+    if (["card", "article", "list-item"].includes(parent.kind)) return parent.id;
+    element = parent;
+  }
+  return id;
 }
 
 function compactSupportedPlan(plan: AgentPlan, elements: Map<string, SemanticElement>): AgentPlan {

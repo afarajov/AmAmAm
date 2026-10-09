@@ -159,6 +159,34 @@ describe("runtime contracts", () => {
     }]);
   });
 
+  it("expands a HIDE target from a product label to its semantic card", () => {
+    const card = {
+      id: "node-00002",
+      kind: "card" as const,
+      text: "Tom Ford Ombre Leather Reserve Parfum 545.00 AZN",
+      tagName: "DIV",
+      visible: true
+    };
+    const label = {
+      id: "node-00003",
+      kind: "paragraph" as const,
+      text: "Tom Ford",
+      tagName: "SPAN",
+      parentId: card.id,
+      visible: true
+    };
+    const plan = validateGroundedPlan({
+      grounding: "SUPPORTED",
+      message: "Prepared the requested action.",
+      references: [{ elementId: label.id, excerpt: label.text }],
+      actions: [{ type: "HIDE", targetElementIds: [label.id], explanation: "Remove product" }],
+      limitations: []
+    }, [card, label]);
+
+    expect(plan.references).toEqual([{ elementId: card.id, excerpt: card.text }]);
+    expect(plan.actions[0]?.targetElementIds).toEqual([card.id]);
+  });
+
   it("requires exactly one target-free RESTORE_ALL for NOT_APPLICABLE", () => {
     expect(() => validateGroundedPlan({
       grounding: "NOT_APPLICABLE",
