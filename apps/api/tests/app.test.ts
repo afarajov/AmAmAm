@@ -72,4 +72,45 @@ describe("API foundation", () => {
     expect(response.body.code).toBe("INVALID_REQUEST");
     expect(response.body.requestId).toBe(response.headers["x-request-id"]);
   });
+
+  it("rejects a request that does not match the runtime contract", async () => {
+    const query = vi.fn();
+    const response = await request(appWith({ query })).post("/api/agent/query").send({ query: "missing page" });
+    expect(response.status).toBe(400);
+    expect(response.body.code).toBe("INVALID_REQUEST");
+    expect(query).not.toHaveBeenCalled();
+  });
+
+  it("rejects malformed JSON with the common error envelope", async () => {
+    const response = await request(appWith(new UnavailableAgentService()))
+      .post("/api/agent/query")
+      .set("content-type", "application/json")
+      .send("{");
+    expect(response.status).toBe(400);
+    expect(response.body.code).toBe("INVALID_REQUEST");
+    expect(response.body.requestId).toBe(response.headers["x-request-id"]);
+  });
+
+  it("rejects oversized request bodies before the service runs", async () => {
+    const query = vi.fn();
+    const response = await request(appWith({ query }))
+      .post("/api/agent/query")
+      .send({ ...agentRequest, query: "x".repeat(40_000) });
+    expect(response.status).toBe(413);
+    expect(response.body.code).toBe("CONTEXT_TOO_LARGE");
+    expect(query).not.toHaveBeenCalled();
+  });
+
+  it("rejects an invalid service response before sending it to the client", async () => {
+    const query = vi.fn(async () => ({
+      requestId,
+      pageId: "page-test",
+      snapshotVersion: 1,
+      message: "Unsafe response",
+      actions: [{ type: "HIGHLIGHT", targetElementIds: ["node-99999"] }]
+    } as AgentResponse));
+    const response = await request(appWith({ query })).post("/api/agent/query").send(agentRequest);
+    expect(response.status).toBe(502);
+    expect(response.body.code).toBe("MODEL_ERROR");
+  });
 });
