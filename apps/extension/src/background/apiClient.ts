@@ -8,6 +8,10 @@ const API_BASE_URL = (
 ).replace(/\/$/, "");
 const REQUEST_TIMEOUT_MS = 20_000;
 
+export type ConnectionCheckResult =
+  | { status: "ready" }
+  | { status: "offline" | "timeout" | "invalid" };
+
 function errorResult(code: ApiError["code"], message: string, requestId?: string): AgentQueryMessageResult {
   return {
     ok: false,
@@ -45,6 +49,28 @@ export async function queryAgentApi(request: AgentRequest): Promise<AgentQueryMe
       return errorResult("MODEL_TIMEOUT", "The agent request timed out.", request.requestId);
     }
     return errorResult("INTERNAL_ERROR", "The AI backend is unavailable.", request.requestId);
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+export async function checkAgentApiConnection(): Promise<ConnectionCheckResult> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 5_000);
+
+  try {
+    const response = await fetch(`${API_BASE_URL}/health`, { signal: controller.signal });
+    if (!response.ok) return { status: "invalid" };
+    const body: unknown = await response.json().catch(() => undefined);
+    return typeof body === "object" && body !== null &&
+      (body as Record<string, unknown>).status === "ok" &&
+      (body as Record<string, unknown>).service === "contextlayer-api"
+      ? { status: "ready" }
+      : { status: "invalid" };
+  } catch (error) {
+    return error instanceof DOMException && error.name === "AbortError"
+      ? { status: "timeout" }
+      : { status: "offline" };
   } finally {
     clearTimeout(timeoutId);
   }

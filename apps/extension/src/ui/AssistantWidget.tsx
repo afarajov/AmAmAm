@@ -13,6 +13,7 @@ import {
 import { FormEvent, KeyboardEvent, useEffect, useId, useRef, useState } from "react";
 
 import type { ActionExecutionResult, AgentResponse } from "@contextlayer/shared";
+import type { ConnectionCheckResult } from "../background/apiClient";
 
 import type {
   AgentSession,
@@ -43,6 +44,7 @@ interface AssistantWidgetProps {
   activationEvent: string;
   agentSession: AgentSession;
   modeLabel: string;
+  checkConnection: () => Promise<ConnectionCheckResult>;
 }
 
 const PROGRESS_MESSAGES: Record<AgentSessionProgress, string> = {
@@ -71,8 +73,9 @@ function readableError(error: unknown): string {
     case "INVALID_RESPONSE":
       return "The AI backend returned an invalid response. No page action was run.";
     case "MODEL_ERROR":
+      return "The AI provider could not produce a valid response. No page action was run.";
     case "INTERNAL_ERROR":
-      return "The AI backend could not prepare the request. No page action was run.";
+      return "The ContextLayer backend is unavailable. No page action was run.";
     default:
       return error instanceof Error ? error.message : "The agent request failed unexpectedly.";
   }
@@ -131,7 +134,8 @@ export function AssistantWidget({
   activationTarget,
   activationEvent,
   agentSession,
-  modeLabel
+  modeLabel,
+  checkConnection
 }: AssistantWidgetProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [view, setView] = useState<"chat" | "history" | "settings">("chat");
@@ -146,6 +150,7 @@ export function AssistantWidget({
   const [hasPageModifications, setHasPageModifications] = useState(false);
   const [activityMessage, setActivityMessage] = useState("Waiting for response…");
   const [pageNotice, setPageNotice] = useState<string | null>(null);
+  const [connectionNotice, setConnectionNotice] = useState<string | null>(null);
   const [pageTitle, setPageTitle] = useState(
     activationTarget.ownerDocument.title || "Current page"
   );
@@ -153,6 +158,7 @@ export function AssistantWidget({
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const messagesRef = useRef<HTMLDivElement>(null);
   const requestInFlightRef = useRef(false);
+  const connectionCheckedRef = useRef(false);
 
   useEffect(() => {
     let active = true;
@@ -202,6 +208,20 @@ export function AssistantWidget({
   useEffect(() => {
     if (isOpen) inputRef.current?.focus();
   }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen || connectionCheckedRef.current) return;
+    connectionCheckedRef.current = true;
+    void checkConnection().then((result) => {
+      const messages: Record<ConnectionCheckResult["status"], string | null> = {
+        ready: null,
+        offline: "The ContextLayer backend is offline. Start it and try again.",
+        timeout: "The ContextLayer backend did not respond to the connection check.",
+        invalid: "The configured backend is not a compatible ContextLayer API."
+      };
+      setConnectionNotice(messages[result.status]);
+    }).catch(() => setConnectionNotice("The ContextLayer backend is offline. Start it and try again."));
+  }, [checkConnection, isOpen]);
 
   useEffect(() => {
     const container = messagesRef.current;
@@ -387,7 +407,10 @@ export function AssistantWidget({
   const handleDeleteSession = (id: string) => {
     void deleteChatSession(id).then((next) => {
       setHistory(next);
-      if (id === sessionId) handleClearCurrentChat();
+      if (id === sessionId) {
+        setMessages([]);
+        setSessionId(crypto.randomUUID());
+      }
     });
   };
 
@@ -417,6 +440,12 @@ export function AssistantWidget({
 
           {view === "settings" ? <SettingsPanel settings={settings} onChange={handleSettingsChange} onExport={handleExport} onClearChat={handleClearCurrentChat} onClearHistory={handleClearHistory} /> : view === "history" ? <HistoryPanel sessions={history} activeId={sessionId} onOpen={handleOpenSession} onDelete={handleDeleteSession} onClear={handleClearHistory} /> : <>
           <div ref={messagesRef} className="contextlayer-messages" aria-live="polite">
+            {connectionNotice && (
+              <div className="contextlayer-error" role="status">
+                <AlertCircle aria-hidden="true" size={17} />
+                <p>{connectionNotice}</p>
+              </div>
+            )}
             {pageNotice && (
               <div className="contextlayer-page-state" role="status">
                 <RotateCcw aria-hidden="true" size={15} />

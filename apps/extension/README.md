@@ -33,11 +33,19 @@ API mode:
 npm run build -w @contextlayer/extension
 ```
 
-API mode targets `http://127.0.0.1:8787/api/agent/query` by default and adds
-that exact origin to `host_permissions`. For isolated UI work, use
-`npm run build:mock -w @contextlayer/extension`. A deployed API origin can be supplied
-with `VITE_CONTEXTLAYER_API_BASE_URL`; its matching manifest permission must be
-updated before distribution.
+API mode targets `http://127.0.0.1:8787/api/agent/query` by default. Set exactly
+one production origin at build time; the build validates it and generates the
+matching single `host_permissions` entry automatically:
+
+```bash
+VITE_CONTEXTLAYER_API_BASE_URL=https://api.example.com npm run release -w @contextlayer/extension
+```
+
+The value must be an HTTP(S) origin only, without credentials, a path, query or
+hash. The extension never contains an OpenAI key and content scripts never call
+OpenAI or the ContextLayer API directly. Network requests are made by the
+background service worker. For isolated UI work, use
+`npm run build:mock -w @contextlayer/extension`.
 
 API builds are written to `dist`; mock builds are isolated in `dist-mock` so
 tests can never replace the unpacked production extension by accident.
@@ -92,6 +100,21 @@ submit protection.
 Load `apps/extension/dist` as an unpacked extension in Chrome. Open a regular
 HTTP(S) page and click the ContextLayer toolbar action. Restricted browser
 pages are rejected without requesting broad host access.
+
+## Release candidate
+
+Run `npm run release -w @contextlayer/extension`. This performs an API build,
+validates Manifest V3, the exact permission set and required runtime files, and
+copies the clean distributable to
+`apps/extension/release/contextlayer-extension`. Source maps, tests, `.env`
+files and secret-named files are rejected. `apps/extension/dist` remains the
+loadable unpacked production extension; Playwright continues to build only
+`dist-mock`.
+
+Before distributing, open `dist/manifest.json` and confirm its sole
+`host_permissions` origin is the deployed backend. Then load `dist` unpacked,
+verify the header says `API mode`, and run one real grounded query plus a local
+Reset. Chrome internal pages are intentionally unsupported.
 
 ## Responsibilities
 
