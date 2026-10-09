@@ -1,9 +1,12 @@
 # Extension workspace — Developer 3
 
-The first extension shell is implemented. It builds a Manifest V3 extension
-that injects an isolated Shadow DOM launcher after a user clicks the toolbar
-action. Chat and integration behavior are intentionally deferred to later
-milestones.
+The extension shell and isolated chat interface are implemented. It builds a
+Manifest V3 extension that injects a Shadow DOM launcher after a user clicks
+the toolbar action. The panel supports open/close behavior, message entry,
+history presentation, loading/error states and responsive layouts.
+
+The backend and page engine are not connected yet. Submitting a message shows
+an explicit unavailable state instead of fabricating an assistant response.
 
 ## Build and load
 
