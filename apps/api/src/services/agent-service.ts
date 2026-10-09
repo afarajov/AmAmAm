@@ -50,7 +50,8 @@ export class PlanningAgentService implements AgentService {
       const rawPlan = await this.planner.plan(planInput);
       try {
         validateUserFacingMessage(rawPlan.message);
-        const validatedPlan = validateGroundedPlan(rawPlan, candidates);
+        const intentRestrictedPlan = restrictPlanToRequestedActions(rawPlan, intent);
+        const validatedPlan = validateGroundedPlan(intentRestrictedPlan, candidates);
         validatePlanIntent(validatedPlan, intent);
         plan = validatedPlan;
         break;
@@ -84,6 +85,18 @@ export class PlanningAgentService implements AgentService {
       limitations: plan.limitations
     };
   }
+}
+
+function restrictPlanToRequestedActions(plan: AgentPlan, intent: QueryIntent): AgentPlan {
+  if (intent.kind !== "ACTION" || intent.requiredActions.includes("RESTORE_ALL")) {
+    return plan;
+  }
+
+  const requested = new Set<AgentActionType>(intent.requiredActions);
+  return {
+    ...plan,
+    actions: plan.actions.filter((action) => requested.has(action.type))
+  };
 }
 
 function validateUserFacingMessage(message: string): void {

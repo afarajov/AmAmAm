@@ -132,6 +132,31 @@ describe("PlanningAgentService", () => {
     expect(plan).toHaveBeenCalledTimes(2);
   });
 
+  it("drops an extra grounded action while preserving the explicitly requested action", async () => {
+    const plan = vi.fn<AgentPlanner["plan"]>(async () => ({
+      grounding: "SUPPORTED",
+      message: "Found it.",
+      references: [{ elementId: "node-00002", excerpt: "Privacy risks" }],
+      actions: [
+        { type: "HIGHLIGHT", targetElementIds: ["node-00002"], explanation: "Requested" },
+        { type: "SCROLL_TO", targetElementIds: ["node-00002"], explanation: "Not requested" }
+      ],
+      limitations: []
+    }));
+
+    const response = await new PlanningAgentService({ plan }).query({
+      ...request,
+      query: "Highlight the privacy paragraph"
+    });
+
+    expect(plan).toHaveBeenCalledOnce();
+    expect(response.actions).toEqual([{
+      type: "HIGHLIGHT",
+      targetElementIds: ["node-00002"],
+      explanation: "Requested"
+    }]);
+  });
+
   it("asks for clarification without calling the model for an ambiguous target", async () => {
     const plan = vi.fn<AgentPlanner["plan"]>();
     const selector = vi.fn(async () => request.page.elements);
