@@ -14,12 +14,18 @@ const embeddingProvider = config.openaiApiKey
   ? new OpenAIEmbeddingProvider(
       config.openaiApiKey,
       config.openaiEmbeddingModel,
-      config.openaiTimeoutMs
+      config.openaiTimeoutMs,
+      config.openaiMaxRetries
     )
   : undefined;
 const agentService = config.openaiApiKey
   ? new PlanningAgentService(
-      new OpenAIResponsesPlanner(config.openaiApiKey, config.openaiModel, config.openaiTimeoutMs),
+      new OpenAIResponsesPlanner(
+        config.openaiApiKey,
+        config.openaiModel,
+        config.openaiTimeoutMs,
+        config.openaiMaxRetries
+      ),
       (query, elements) => selectSemanticCandidateElements(
         query,
         elements,
@@ -27,7 +33,12 @@ const agentService = config.openaiApiKey
       )
     )
   : new UnavailableAgentService();
-const app = createApp({ config, logger, agentService });
+const app = createApp({
+  config,
+  logger,
+  agentService,
+  readiness: { configured: Boolean(config.openaiApiKey) }
+});
 const server = createServer(app);
 
 server.listen(config.port, config.host, () => {

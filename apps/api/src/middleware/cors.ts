@@ -1,4 +1,5 @@
 import type { RequestHandler } from "express";
+import { HttpError } from "../errors/api-error.js";
 
 const ALLOWED_METHODS = "GET, POST, OPTIONS";
 const ALLOWED_HEADERS = "content-type, x-request-id";
@@ -15,11 +16,7 @@ export function cors(allowedOrigins: readonly string[]): RequestHandler {
 
     response.vary("Origin");
     if (!allowed.has(origin)) {
-      if (request.method === "OPTIONS") {
-        response.sendStatus(403);
-        return;
-      }
-      next();
+      next(new HttpError(403, "INVALID_REQUEST", "Request origin is not allowed."));
       return;
     }
 
