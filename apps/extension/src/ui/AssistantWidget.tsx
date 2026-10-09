@@ -3,10 +3,8 @@ import {
   CircleCheck,
   CircleX,
   LocateFixed,
-  MessageCircle,
   RotateCcw,
-  Send,
-  Sparkles
+  Send
 } from "lucide-react";
 import { FormEvent, KeyboardEvent, useEffect, useId, useRef, useState } from "react";
 
@@ -17,6 +15,7 @@ import type {
   AgentSessionProgress
 } from "../integration/agentSession";
 import { presentActionResult } from "./actionPresentation";
+import { LotusMark } from "./LotusMark";
 import type { ChatMessage, RequestStatus } from "./types";
 
 interface AssistantWidgetProps {
@@ -290,7 +289,7 @@ export function AssistantWidget({
           <header className="contextlayer-header">
             <div className="contextlayer-brand">
               <span className="contextlayer-brand-mark" aria-hidden="true">
-                <Sparkles size={18} strokeWidth={2.2} />
+                <LotusMark />
               </span>
               <div>
                 <h1>ContextLayer</h1>
@@ -320,7 +319,7 @@ export function AssistantWidget({
             {messages.length === 0 ? (
               <div className="contextlayer-empty-state">
                 <span className="contextlayer-empty-mark" aria-hidden="true">
-                  <MessageCircle size={30} strokeWidth={1.7} />
+                  <LotusMark />
                 </span>
                 <div>
                   <h2>Ready for this page</h2>
@@ -442,7 +441,7 @@ export function AssistantWidget({
           title="Open ContextLayer"
           onClick={() => setIsOpen(true)}
         >
-          <Sparkles aria-hidden="true" size={22} strokeWidth={2} />
+          <LotusMark />
         </button>
       )}
     </>
